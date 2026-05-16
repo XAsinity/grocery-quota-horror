@@ -201,7 +201,7 @@ namespace GroceryQuotaHorror.Player
             }
         }
 
-        [ServerRpc(RequireOwnership = false)]
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
         private void ReviveServerRpc()
         {
             isDowned.Value = false;

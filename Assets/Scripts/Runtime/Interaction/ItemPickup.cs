@@ -73,14 +73,14 @@ namespace GroceryQuotaHorror.Interaction
             player.RequestPickup(this);
         }
 
-        [ServerRpc(RequireOwnership = false)]
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
         public void PickupServerRpc(ulong playerId)
         {
             holderId.Value = playerId;
             body.isKinematic = true;
         }
 
-        [ServerRpc(RequireOwnership = false)]
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
         public void DropServerRpc(Vector3 position)
         {
             holderId.Value = ulong.MaxValue;
