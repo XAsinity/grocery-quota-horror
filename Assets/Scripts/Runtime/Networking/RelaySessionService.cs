@@ -5,6 +5,7 @@ using Unity.Networking.Transport.Relay;
 using Unity.Services.Authentication;
 using Unity.Services.Core;
 using Unity.Services.Relay;
+using Unity.Services.Relay.Models;
 
 namespace GroceryQuotaHorror.Networking
 {
@@ -30,7 +31,7 @@ namespace GroceryQuotaHorror.Networking
             await EnsureServicesAsync();
             var allocation = await RelayService.Instance.CreateAllocationAsync(3);
             var code = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
-            transport.SetRelayServerData(new RelayServerData(allocation, "dtls"));
+            transport.SetRelayServerData(AllocationUtils.ToRelayServerData(allocation, "dtls"));
             networkManager.StartHost();
             return code;
         }
@@ -45,7 +46,7 @@ namespace GroceryQuotaHorror.Networking
 
             await EnsureServicesAsync();
             var allocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
-            transport.SetRelayServerData(new RelayServerData(allocation, "dtls"));
+            transport.SetRelayServerData(allocation.ToRelayServerData("dtls"));
             return networkManager.StartClient();
         }
 
