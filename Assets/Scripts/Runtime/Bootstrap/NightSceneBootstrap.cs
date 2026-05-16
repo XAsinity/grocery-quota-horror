@@ -9,11 +9,10 @@ namespace GroceryQuotaHorror.Bootstrap
 {
     public sealed class NightSceneBootstrap : MonoBehaviour
     {
-        [SerializeField] private RunConfig runConfig;
+        [SerializeField] private GameBalanceProfile balanceProfile;
+        [SerializeField] private GameContentDatabase contentDatabase;
         [SerializeField] private StoreGenerator storeGenerator;
         [SerializeField] private NightGameManager gameManagerPrefab;
-        [SerializeField] private GameObject itemPickupPrefab;
-        [SerializeField] private GameObject monsterPrefab;
         [SerializeField] private Transform dynamicRoot;
 
         private NightGameManager gameManagerInstance;
@@ -23,22 +22,40 @@ namespace GroceryQuotaHorror.Bootstrap
 
         private void Start()
         {
-            if (!NetworkManager.Singleton.IsServer)
+            GameRuntime.SetRuntimeAssets(balanceProfile, contentDatabase);
+            var networkManager = NetworkManager.Singleton;
+            var isOfflineLocal = NetworkBootstrap.LocalOfflineMode || networkManager == null || !networkManager.IsListening;
+            if (!isOfflineLocal && !networkManager.IsServer)
             {
                 return;
             }
 
-            gameManagerInstance = Instantiate(gameManagerPrefab, Vector3.zero, Quaternion.identity);
-            gameManagerInstance.Configure(runConfig, itemPickupPrefab, monsterPrefab, dynamicRoot);
-            gameManagerInstance.NetworkObject.Spawn();
-            gameManagerInstance.StartNight(Random.Range(1000, 999999));
+            var content = GameRuntime.Content;
+            var managerPrefab = gameManagerPrefab != null ? gameManagerPrefab : content != null ? content.nightGameManagerPrefab : null;
+            if (managerPrefab == null)
+            {
+                Debug.LogError("NightSceneBootstrap is missing a NightGameManager prefab reference.");
+                return;
+            }
+
+            gameManagerInstance = Instantiate(managerPrefab, Vector3.zero, Quaternion.identity);
+            gameManagerInstance.Configure(GameRuntime.Content, dynamicRoot);
+            if (!isOfflineLocal && gameManagerInstance.NetworkObject != null)
+            {
+                gameManagerInstance.NetworkObject.Spawn();
+            }
+
+            var balance = GameRuntime.Balance;
+            var defaultSeed = balance != null
+                ? Random.Range(balance.spawn.defaultSeedMin, balance.spawn.defaultSeedMax)
+                : Random.Range(1000, 999999);
+            gameManagerInstance.StartNight(defaultSeed);
         }
 
         public void GenerateStore(int seed)
         {
-            storeGenerator.Configure(runConfig, dynamicRoot);
+            storeGenerator.Configure(GameRuntime.Content, dynamicRoot);
             storeGenerator.Generate(seed);
         }
     }
 }
-

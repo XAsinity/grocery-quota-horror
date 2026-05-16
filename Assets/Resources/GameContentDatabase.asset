@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 31b03cf9be6048d479214a084538a189, type: 3}
+  m_Name: GameContentDatabase
+  m_EditorClassIdentifier: Assembly-CSharp::GroceryQuotaHorror.Data.GameContentDatabase
+  itemPool:
+  - {fileID: 11400000, guid: 21d97b1bc8ad71a45ad6b8887a5bd8f6, type: 2}
+  - {fileID: 11400000, guid: 0260bb1998e11fa40927c521ebb91dd1, type: 2}
+  - {fileID: 11400000, guid: 78397a049be6d6e48bc2d3dde38a9745, type: 2}
+  - {fileID: 11400000, guid: 5008274f735867d4b9634cc03234c7f0, type: 2}
+  - {fileID: 11400000, guid: deb04ff0ddd4170408b49f99fe9e0d59, type: 2}
+  - {fileID: 11400000, guid: 256967229f86a1e46adb9cf015e5f6ea, type: 2}
+  - {fileID: 11400000, guid: 7a9a419c66edba34b873b994764d5bb6, type: 2}
+  - {fileID: 11400000, guid: 9662612bd1c9e4841a163ff5986019c2, type: 2}
+  - {fileID: 11400000, guid: a39669b55f936204396dfb4a2715ca7d, type: 2}
+  - {fileID: 11400000, guid: 39a85689551815844ac6c8d9cad4ae62, type: 2}
+  monsterPool:
+  - {fileID: 11400000, guid: 0ff4692c2d3f1b043b5203b8755aa2f5, type: 2}
+  - {fileID: 11400000, guid: 3f5a925e29d2fea448189d48e0b1ca5b, type: 2}
+  - {fileID: 11400000, guid: b4cd7cabf6475c345a590837e61b1332, type: 2}
+  chunkPool:
+  - {fileID: 11400000, guid: 6433a020f714b4547bac9cf4705af8d4, type: 2}
+  - {fileID: 11400000, guid: 356696fa6c421534bab14055f7e24607, type: 2}
+  - {fileID: 11400000, guid: b4ac2d2dad9424b4a9ca77f2fab675a0, type: 2}
+  - {fileID: 11400000, guid: e5bcfaf0dca9eb54186c3d65dbfc813c, type: 2}
+  - {fileID: 11400000, guid: 599d46a3acb62344885495dde56721cf, type: 2}
+  - {fileID: 11400000, guid: 47811d21a85c9fa43a2f16eaba141c90, type: 2}
+  - {fileID: 11400000, guid: eee75048a8284b345b3dae32461a69f4, type: 2}
+  - {fileID: 11400000, guid: 4bf6fe781b11fcb40a68e220376bf3ba, type: 2}
+  - {fileID: 11400000, guid: b72191368a0fe2b47b7ced6afbdb3c6c, type: 2}
+  - {fileID: 11400000, guid: 50c16f5918b338242beab1e9170d381a, type: 2}
+  itemPickupPrefab: {fileID: 8848946061905785156, guid: c97ad9118c12c134ab177a1b8af9192d, type: 3}
+  monsterPrefab: {fileID: 4733823048074324545, guid: 52cc08409c9ff0940bbd6c421637500c, type: 3}
+  nightGameManagerPrefab: {fileID: 5660781722310115072, guid: 2317ddff621a4354f9b929feffe832d6, type: 3}

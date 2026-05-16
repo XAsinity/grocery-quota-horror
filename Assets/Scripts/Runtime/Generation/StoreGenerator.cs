@@ -7,7 +7,7 @@ namespace GroceryQuotaHorror.Generation
 {
     public sealed class StoreGenerator : MonoBehaviour
     {
-        [SerializeField] private RunConfig runConfig;
+        [SerializeField] private GameContentDatabase contentDatabase;
         [SerializeField] private Transform chunkRoot;
 
         private readonly List<GameObject> spawnedChunks = new();
@@ -17,9 +17,9 @@ namespace GroceryQuotaHorror.Generation
         public IReadOnlyList<ItemSpawnMarker> SpawnMarkers => spawnMarkers;
         public IReadOnlyList<Transform> PatrolPoints => patrolPoints;
 
-        public void Configure(RunConfig config, Transform root)
+        public void Configure(GameContentDatabase content, Transform root)
         {
-            runConfig = config;
+            contentDatabase = content;
             chunkRoot = root;
         }
 
@@ -27,13 +27,14 @@ namespace GroceryQuotaHorror.Generation
         {
             Clear();
 
-            if (runConfig == null || chunkRoot == null)
+            if (contentDatabase == null || chunkRoot == null)
             {
                 return;
             }
 
             var random = new System.Random(seed);
             var layout = BuildChunkSequence(random);
+            var spacing = GameRuntime.Balance != null ? GameRuntime.Balance.layout.chunkSpacing : 26f;
             var cursor = Vector3.zero;
             for (var i = 0; i < layout.Count; i++)
             {
@@ -41,7 +42,7 @@ namespace GroceryQuotaHorror.Generation
                 chunkInstance.name = $"{i:00}_{layout[i].chunkId}";
                 spawnedChunks.Add(chunkInstance);
                 CollectMarkers(chunkInstance);
-                cursor += Vector3.forward * 26f;
+                cursor += Vector3.forward * spacing;
             }
         }
 
@@ -74,9 +75,9 @@ namespace GroceryQuotaHorror.Generation
             var loadingDock = FindFirst(RoomType.LoadingDock);
             var middle = new List<StoreChunkDefinition>();
 
-            for (var i = 0; i < runConfig.chunkPool.Count; i++)
+            for (var i = 0; i < contentDatabase.chunkPool.Count; i++)
             {
-                var def = runConfig.chunkPool[i];
+                var def = contentDatabase.chunkPool[i];
                 if (def.roomType == RoomType.FrontEntrance || def.roomType == RoomType.Checkout || def.roomType == RoomType.LoadingDock)
                 {
                     continue;
@@ -85,8 +86,9 @@ namespace GroceryQuotaHorror.Generation
                 middle.Add(def);
             }
 
+            var middleCount = GameRuntime.Balance != null ? GameRuntime.Balance.layout.middleChunkCount : 6;
             var sequence = new List<StoreChunkDefinition> { front };
-            for (var i = 0; i < runConfig.middleChunkCount; i++)
+            for (var i = 0; i < middleCount; i++)
             {
                 sequence.Add(middle[random.Next(0, middle.Count)]);
             }
@@ -98,11 +100,11 @@ namespace GroceryQuotaHorror.Generation
 
         private StoreChunkDefinition FindFirst(RoomType type)
         {
-            for (var i = 0; i < runConfig.chunkPool.Count; i++)
+            for (var i = 0; i < contentDatabase.chunkPool.Count; i++)
             {
-                if (runConfig.chunkPool[i].roomType == type)
+                if (contentDatabase.chunkPool[i].roomType == type)
                 {
-                    return runConfig.chunkPool[i];
+                    return contentDatabase.chunkPool[i];
                 }
             }
 

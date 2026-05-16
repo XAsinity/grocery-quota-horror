@@ -1,0 +1,106 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8bf7e2e50645b1741a2e2b9f91323167, type: 3}
+  m_Name: StressTest
+  m_EditorClassIdentifier: Assembly-CSharp::GroceryQuotaHorror.Data.GameBalanceProfile
+  globalPhysics:
+    worldGravity: {x: 0, y: -9.81, z: 0}
+  playerMovement:
+    moveSpeed: 6
+    sprintMultiplier: 1.6
+    playerGravity: -20
+    lookSensitivity: 2.2
+    maxLookPitch: 80
+    mouseTurnRate: 120
+    cameraHeight: 1.55
+    movementSmoothing: 10
+  playerCamera:
+    supportedLocalOffset: {x: 0, y: 1.55, z: 0}
+    limpFollowPositionSharpness: 10
+    limpFollowRotationSharpness: 8
+    recoveryBlendSeconds: 0.22
+  playerBody:
+    pelvisFollowForce: 160
+    pelvisDamping: 12
+    pelvisTorque: 14
+    boneTorque: 8
+    boneAngularDamping: 0.75
+    supportedLinearDamping: 0.6
+    supportedAngularDamping: 0.12
+    downedLinearDamping: 0.18
+    downedAngularDamping: 0.06
+    downedDriveMultiplier: 0.38
+    supportedDriveMultiplier: 1
+    supportedBobAmplitude: 0.05
+    supportedBobFrequency: 5.5
+    supportedMoveLean: 10
+    sprintLeanBonus: 6
+    headPitchWeight: 0.5
+    chestPitchWeight: 0.18
+    armSwingDegrees: 16
+    legStrideDegrees: 18
+    armDragDegrees: 6
+    airborneTuckDegrees: 10
+    stumbleResponse: 0.04
+  ragdoll:
+    spawnDistance: 3
+    spawnVerticalOffset: 0.2
+    jointSwingLimit: 25
+    jointTwistLimit: 20
+    headLookTorque: 2.4
+    headLiftForce: 0.65
+    restoreHeightOffset: 0.15
+    recoveryAssistForce: 24
+    ragdollHoldForce: 140
+    ragdollHoldDamping: 2.5
+    ragdollHeldLinearDamping: 0.4
+    ragdollHeldAngularDamping: 0.45
+    ragdollHeldVerticalAssist: 0.7
+    ragdollHeldMaxForce: 140
+  interaction:
+    interactRange: 3.2
+    hideOffset: 0.5
+    heldItemForwardOffset: 1.1
+    heldItemUpOffset: 1.1
+    dropDistance: 1.4
+    grabbedHoldDistance: 2.6
+    throwImpulse: 7.5
+  projectile:
+    speed: 30
+    lifetime: 5
+    scale: 0.25
+    mass: 0.6
+    spawnDistance: 0.7
+  monster:
+    patrolSpeedMultiplier: 0.55
+    turnSmoothing: 0.12
+    patrolArrivalDistance: 1.2
+  objectives:
+    minQuotaValue: 12
+    maxQuotaValue: 20
+    nightLengthSeconds: 420
+    objectiveSeedSalt: 1777
+    objectiveMinCount: 3
+    objectiveMaxCount: 5
+    objectiveQuotaDivisor: 4
+  spawn:
+    defaultSeedMin: 1000
+    defaultSeedMax: 999999
+    itemSeedStep: 17
+    monsterBudget: 5
+  layout:
+    middleChunkCount: 6
+    chunkSpacing: 26
+  debug:
+    showRuntimeDebugPanel: 1
+    toggleDebugPanelKey: 284
+    allowProfileSwitchingOffline: 1

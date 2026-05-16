@@ -23,20 +23,20 @@ namespace GroceryQuotaHorror.Editor
         private const string DataRoot = "Assets/Data";
         private const string PrefabRoot = "Assets/Prefabs";
 
-        [MenuItem("Tools/Grocery Quota Horror/Build Starter Project")]
-        public static void BuildStarterProject()
+        private static void BuildStarterProject()
         {
             EnsureFolders();
             CreateDataAssets();
             CreateGameplayPrefabs();
             CreateChunkPrefabsAndData();
+            GameDataBootstrap.EnsureDataAssets();
             CreateScenes();
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Debug.Log("Grocery Quota Horror starter project generated.");
         }
 
-        public static void BuildStarterProjectBatch()
+        private static void BuildStarterProjectBatch()
         {
             BuildStarterProject();
             EditorApplication.Exit(0);
@@ -134,45 +134,15 @@ namespace GroceryQuotaHorror.Editor
             var monster = CreateMonsterPrefab();
             var manager = CreateManagerPrefab();
 
-            var bootstrap = AssetDatabase.LoadAssetAtPath<RunConfig>($"{DataRoot}/RunConfig.asset");
-            manager.Configure(bootstrap, item.gameObject, monster.gameObject, null);
+            var content = AssetDatabase.LoadAssetAtPath<GameContentDatabase>("Assets/Resources/GameContentDatabase.asset");
+            manager.Configure(content, null);
             EditorUtility.SetDirty(manager);
         }
 
         private static PlayerController CreatePlayerPrefab()
         {
-            var root = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            root.name = "Player";
-            Object.DestroyImmediate(root.GetComponent<Collider>());
-            var controller = root.AddComponent<CharacterController>();
-            controller.height = 1.8f;
-            controller.radius = 0.35f;
-            root.AddComponent<NetworkObject>();
-            root.AddComponent<Unity.Netcode.Components.NetworkTransform>();
-            var player = root.AddComponent<PlayerController>();
-            var lightObject = new GameObject("Flashlight");
-            lightObject.transform.SetParent(root.transform);
-            lightObject.transform.localPosition = new Vector3(0f, 1.4f, 0.15f);
-            var light = lightObject.AddComponent<Light>();
-            light.type = LightType.Spot;
-            light.spotAngle = 55f;
-            light.range = 16f;
-            light.enabled = false;
-
-            var so = new SerializedObject(player);
-            so.FindProperty("flashlight").objectReferenceValue = light;
-            var renderers = new[] { root.GetComponent<Renderer>() };
-            so.FindProperty("bodyRenderers").arraySize = renderers.Length;
-            for (var i = 0; i < renderers.Length; i++)
-            {
-                so.FindProperty("bodyRenderers").GetArrayElementAtIndex(i).objectReferenceValue = renderers[i];
-            }
-
-            so.ApplyModifiedPropertiesWithoutUndo();
-            var path = $"{PrefabRoot}/Gameplay/Player.prefab";
-            var prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
-            Object.DestroyImmediate(root);
-            return prefab.GetComponent<PlayerController>();
+            MainCharacterPlayerBootstrap.EnsurePlayerPrefab();
+            return AssetDatabase.LoadAssetAtPath<GameObject>($"{PrefabRoot}/Gameplay/Player.prefab")?.GetComponent<PlayerController>();
         }
 
         private static ItemPickup CreateItemPrefab()
@@ -327,7 +297,8 @@ namespace GroceryQuotaHorror.Editor
             EditorBuildSettings.scenes = new[]
             {
                 new EditorBuildSettingsScene($"{ScenesRoot}/Bootstrap.unity", true),
-                new EditorBuildSettingsScene($"{ScenesRoot}/SupermarketNight.unity", true)
+                new EditorBuildSettingsScene($"{ScenesRoot}/SupermarketNight.unity", true),
+                new EditorBuildSettingsScene($"{ScenesRoot}/TestPrototype.unity", true)
             };
         }
 
@@ -364,6 +335,8 @@ namespace GroceryQuotaHorror.Editor
             var bootstrap = netRoot.AddComponent<NetworkBootstrap>();
             var so = new SerializedObject(bootstrap);
             so.FindProperty("networkManager").objectReferenceValue = manager;
+            so.FindProperty("balanceProfile").objectReferenceValue = AssetDatabase.LoadAssetAtPath<GameBalanceProfile>("Assets/Resources/BalanceProfiles/Prototype.asset");
+            so.FindProperty("contentDatabase").objectReferenceValue = AssetDatabase.LoadAssetAtPath<GameContentDatabase>("Assets/Resources/GameContentDatabase.asset");
             so.ApplyModifiedPropertiesWithoutUndo();
 
             EditorSceneManager.SaveScene(scene, $"{ScenesRoot}/Bootstrap.unity");
@@ -406,16 +379,15 @@ namespace GroceryQuotaHorror.Editor
             extraction.GetComponent<Renderer>().sharedMaterial.color = new Color(0.2f, 0.8f, 0.2f);
 
             var bootstrapSo = new SerializedObject(bootstrap);
-            bootstrapSo.FindProperty("runConfig").objectReferenceValue = AssetDatabase.LoadAssetAtPath<RunConfig>($"{DataRoot}/RunConfig.asset");
+            bootstrapSo.FindProperty("balanceProfile").objectReferenceValue = AssetDatabase.LoadAssetAtPath<GameBalanceProfile>("Assets/Resources/BalanceProfiles/Night.asset");
+            bootstrapSo.FindProperty("contentDatabase").objectReferenceValue = AssetDatabase.LoadAssetAtPath<GameContentDatabase>("Assets/Resources/GameContentDatabase.asset");
             bootstrapSo.FindProperty("storeGenerator").objectReferenceValue = generator;
             bootstrapSo.FindProperty("gameManagerPrefab").objectReferenceValue = AssetDatabase.LoadAssetAtPath<NightGameManager>($"{PrefabRoot}/Managers/NightGameManager.prefab");
-            bootstrapSo.FindProperty("itemPickupPrefab").objectReferenceValue = AssetDatabase.LoadAssetAtPath<GameObject>($"{PrefabRoot}/Gameplay/ItemPickup.prefab");
-            bootstrapSo.FindProperty("monsterPrefab").objectReferenceValue = AssetDatabase.LoadAssetAtPath<GameObject>($"{PrefabRoot}/Gameplay/Monster.prefab");
             bootstrapSo.FindProperty("dynamicRoot").objectReferenceValue = dynamicRoot.transform;
             bootstrapSo.ApplyModifiedPropertiesWithoutUndo();
 
             var generatorSo = new SerializedObject(generator);
-            generatorSo.FindProperty("runConfig").objectReferenceValue = AssetDatabase.LoadAssetAtPath<RunConfig>($"{DataRoot}/RunConfig.asset");
+            generatorSo.FindProperty("contentDatabase").objectReferenceValue = AssetDatabase.LoadAssetAtPath<GameContentDatabase>("Assets/Resources/GameContentDatabase.asset");
             generatorSo.FindProperty("chunkRoot").objectReferenceValue = dynamicRoot.transform;
             generatorSo.ApplyModifiedPropertiesWithoutUndo();
 

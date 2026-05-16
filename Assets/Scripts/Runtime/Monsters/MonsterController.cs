@@ -1,3 +1,4 @@
+using GroceryQuotaHorror.Bootstrap;
 using System.Collections.Generic;
 using GroceryQuotaHorror.Core;
 using GroceryQuotaHorror.Data;
@@ -14,23 +15,25 @@ namespace GroceryQuotaHorror.Monsters
 
         private readonly NetworkVariable<int> definitionIndex = new(-1);
 
-        private RunConfig runConfig;
+        private GameContentDatabase contentDatabase;
         private List<Transform> patrolPoints;
         private int patrolIndex;
         private float attackCooldown;
 
-        public void Initialize(int configIndex, RunConfig config, IReadOnlyList<Transform> scenePatrolPoints)
+        private bool IsOfflineLocalMode => NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening || NetworkBootstrap.LocalOfflineMode;
+
+        public void Initialize(int configIndex, GameContentDatabase content, IReadOnlyList<Transform> scenePatrolPoints)
         {
             definitionIndex.Value = configIndex;
-            runConfig = config;
+            contentDatabase = content;
             patrolPoints = new List<Transform>(scenePatrolPoints);
         }
 
         public override void OnNetworkSpawn()
         {
-            if (runConfig == null && NightGameManager.Instance != null)
+            if (contentDatabase == null)
             {
-                runConfig = NightGameManager.Instance.RunConfig;
+                contentDatabase = NightGameManager.Instance != null ? NightGameManager.Instance.ContentDatabase : GameRuntime.Content;
             }
 
             ApplyVisuals();
@@ -38,13 +41,13 @@ namespace GroceryQuotaHorror.Monsters
 
         private void Update()
         {
-            if (!IsServer || runConfig == null || definitionIndex.Value < 0)
+            if ((!IsServer && !IsOfflineLocalMode) || contentDatabase == null || definitionIndex.Value < 0 || GameRuntime.Balance == null)
             {
                 return;
             }
 
             attackCooldown -= Time.deltaTime;
-            var definition = runConfig.monsterPool[definitionIndex.Value];
+            var definition = contentDatabase.monsterPool[definitionIndex.Value];
             var target = FindTarget(definition);
             if (target == null)
             {
@@ -55,7 +58,7 @@ namespace GroceryQuotaHorror.Monsters
             var flat = target.transform.position - transform.position;
             flat.y = 0f;
             transform.position += flat.normalized * definition.moveSpeed * Time.deltaTime;
-            transform.forward = Vector3.Lerp(transform.forward, flat.normalized, 0.12f);
+            transform.forward = Vector3.Lerp(transform.forward, flat.normalized, GameRuntime.Balance.monster.turnSmoothing);
 
             if (flat.magnitude <= definition.attackRange && attackCooldown <= 0f)
             {
@@ -89,16 +92,17 @@ namespace GroceryQuotaHorror.Monsters
 
         private void Patrol(float speed)
         {
-            if (patrolPoints == null || patrolPoints.Count == 0)
+            if (patrolPoints == null || patrolPoints.Count == 0 || GameRuntime.Balance == null)
             {
                 return;
             }
 
+            var tuning = GameRuntime.Balance.monster;
             var target = patrolPoints[patrolIndex % patrolPoints.Count];
             var delta = target.position - transform.position;
             delta.y = 0f;
-            transform.position += delta.normalized * speed * 0.55f * Time.deltaTime;
-            if (delta.magnitude < 1.2f)
+            transform.position += delta.normalized * speed * tuning.patrolSpeedMultiplier * Time.deltaTime;
+            if (delta.magnitude < tuning.patrolArrivalDistance)
             {
                 patrolIndex++;
             }
@@ -106,9 +110,9 @@ namespace GroceryQuotaHorror.Monsters
 
         private void ApplyVisuals()
         {
-            if (meshRenderer != null && runConfig != null && definitionIndex.Value >= 0)
+            if (meshRenderer != null && contentDatabase != null && definitionIndex.Value >= 0)
             {
-                meshRenderer.sharedMaterial.color = runConfig.monsterPool[definitionIndex.Value].tint;
+                meshRenderer.sharedMaterial.color = contentDatabase.monsterPool[definitionIndex.Value].tint;
             }
         }
     }

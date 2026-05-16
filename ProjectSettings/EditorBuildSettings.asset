@@ -11,5 +11,8 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/SupermarketNight.unity
     guid: ab1b170e84f3f2f458da1b57b8b2cdea
+  - enabled: 1
+    path: Assets/Scenes/TestPrototype.unity
+    guid: d348cd793a940af4badf9f3ce19c7dad
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0

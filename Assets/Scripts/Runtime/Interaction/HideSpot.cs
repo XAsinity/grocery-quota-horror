@@ -1,3 +1,4 @@
+using GroceryQuotaHorror.Data;
 using GroceryQuotaHorror.Player;
 using UnityEngine;
 
@@ -9,8 +10,8 @@ namespace GroceryQuotaHorror.Interaction
 
         public void Interact(PlayerController player)
         {
-            player.ToggleHide(transform.position + Vector3.back * 0.5f);
+            var hideOffset = GameRuntime.Balance != null ? GameRuntime.Balance.interaction.hideOffset : 0.5f;
+            player.ToggleHide(transform.position + Vector3.back * hideOffset);
         }
     }
 }
-

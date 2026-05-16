@@ -14,9 +14,7 @@ namespace GroceryQuotaHorror.Core
     {
         public static NightGameManager Instance { get; private set; }
 
-        [SerializeField] private RunConfig runConfig;
-        [SerializeField] private GameObject itemPickupPrefab;
-        [SerializeField] private GameObject monsterPrefab;
+        [SerializeField] private GameContentDatabase contentDatabase;
         [SerializeField] private Transform dynamicRoot;
 
         private readonly NetworkVariable<int> seed = new(-1);
@@ -37,15 +35,15 @@ namespace GroceryQuotaHorror.Core
         public bool QuotaMet => quotaMet.Value;
         public RunResult CurrentResult => runResult.Value;
         public int Seed => seed.Value;
-        public RunConfig RunConfig => runConfig;
+        public GameContentDatabase ContentDatabase => contentDatabase;
 
         public event Action StateChanged;
 
-        public void Configure(RunConfig config, GameObject itemPrefabReference, GameObject monsterPrefabReference, Transform root)
+        private bool IsOfflineLocalMode => NetworkBootstrap.LocalOfflineMode || NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening;
+
+        public void Configure(GameContentDatabase content, Transform root)
         {
-            runConfig = config;
-            itemPickupPrefab = itemPrefabReference;
-            monsterPrefab = monsterPrefabReference;
+            contentDatabase = content;
             dynamicRoot = root;
         }
 
@@ -74,7 +72,7 @@ namespace GroceryQuotaHorror.Core
 
         private void Update()
         {
-            if (!IsServer || runResult.Value != RunResult.InProgress)
+            if ((!IsServer && !IsOfflineLocalMode) || runResult.Value != RunResult.InProgress || GameRuntime.Balance == null)
             {
                 return;
             }
@@ -88,14 +86,15 @@ namespace GroceryQuotaHorror.Core
 
         public void StartNight(int nightSeed)
         {
-            if (!IsServer || runConfig == null)
+            if ((!IsServer && !IsOfflineLocalMode) || contentDatabase == null || GameRuntime.Balance == null)
             {
                 return;
             }
 
+            var objectives = GameRuntime.Balance.objectives;
             seed.Value = nightSeed;
-            quotaValue.Value = runConfig.GetQuotaForSeed(nightSeed);
-            timeRemaining.Value = runConfig.nightLengthSeconds;
+            quotaValue.Value = new System.Random(nightSeed).Next(objectives.minQuotaValue, objectives.maxQuotaValue + 1);
+            timeRemaining.Value = objectives.nightLengthSeconds;
             quotaMet.Value = false;
             runResult.Value = RunResult.InProgress;
             objectiveEntries.Clear();
@@ -108,18 +107,19 @@ namespace GroceryQuotaHorror.Core
         private void BuildObjectiveList(int nightSeed)
         {
             objectiveEntries.Clear();
-            var random = new System.Random(nightSeed ^ 1777);
+            var objectives = GameRuntime.Balance.objectives;
+            var random = new System.Random(nightSeed ^ objectives.objectiveSeedSalt);
             var chosen = new HashSet<int>();
-            var target = Mathf.Clamp(quotaValue.Value / 4, 3, 5);
+            var target = Mathf.Clamp(quotaValue.Value / Mathf.Max(1, objectives.objectiveQuotaDivisor), objectives.objectiveMinCount, objectives.objectiveMaxCount);
 
-            while (chosen.Count < target && chosen.Count < runConfig.itemPool.Count)
+            while (chosen.Count < target && chosen.Count < contentDatabase.itemPool.Count)
             {
-                chosen.Add(random.Next(0, runConfig.itemPool.Count));
+                chosen.Add(random.Next(0, contentDatabase.itemPool.Count));
             }
 
             foreach (var itemIndex in chosen)
             {
-                var item = runConfig.itemPool[itemIndex];
+                var item = contentDatabase.itemPool[itemIndex];
                 objectiveEntries.Add(new ObjectiveEntry
                 {
                     itemIndex = itemIndex,
@@ -145,26 +145,37 @@ namespace GroceryQuotaHorror.Core
 
             bootstrap.GenerateStore(seed.Value);
             var markers = bootstrap.CurrentSpawnMarkers;
+            var content = contentDatabase;
+            var spawn = GameRuntime.Balance.spawn;
 
             for (var i = 0; i < markers.Count; i++)
             {
-                var definitionIndex = ChooseItemIndexForZone(markers[i].zone, seed.Value + i * 17);
-                var spawn = Instantiate(itemPickupPrefab, markers[i].transform.position, Quaternion.identity, dynamicRoot);
-                var pickup = spawn.GetComponent<ItemPickup>();
-                pickup.Initialize(definitionIndex, runConfig);
-                pickup.NetworkObject.Spawn(true);
+                var definitionIndex = ChooseItemIndexForZone(markers[i].zone, seed.Value + i * spawn.itemSeedStep);
+                var itemPrefab = content.itemPickupPrefab;
+                var itemInstance = Instantiate(itemPrefab, markers[i].transform.position, Quaternion.identity, dynamicRoot);
+                var pickup = itemInstance.GetComponent<ItemPickup>();
+                pickup.Initialize(definitionIndex, content);
+                if (!IsOfflineLocalMode && pickup.NetworkObject != null)
+                {
+                    pickup.NetworkObject.Spawn(true);
+                }
+
                 liveItems.Add(pickup);
             }
 
             var patrolPoints = bootstrap.CurrentPatrolPoints;
-            var monsterCount = Mathf.Min(runConfig.monsterBudget, patrolPoints.Count);
+            var monsterCount = Mathf.Min(spawn.monsterBudget, patrolPoints.Count);
             for (var i = 0; i < monsterCount; i++)
             {
-                var definitionIndex = i % runConfig.monsterPool.Count;
-                var monsterGo = Instantiate(monsterPrefab, patrolPoints[i].position, Quaternion.identity, dynamicRoot);
+                var definitionIndex = i % content.monsterPool.Count;
+                var monsterGo = Instantiate(content.monsterPrefab, patrolPoints[i].position, Quaternion.identity, dynamicRoot);
                 var monster = monsterGo.GetComponent<MonsterController>();
-                monster.Initialize(definitionIndex, runConfig, patrolPoints);
-                monster.NetworkObject.Spawn(true);
+                monster.Initialize(definitionIndex, content, patrolPoints);
+                if (!IsOfflineLocalMode && monster.NetworkObject != null)
+                {
+                    monster.NetworkObject.Spawn(true);
+                }
+
                 liveMonsters.Add(monster);
             }
 
@@ -174,9 +185,9 @@ namespace GroceryQuotaHorror.Core
         private int ChooseItemIndexForZone(SpawnZone zone, int randomSeed)
         {
             var candidates = new List<int>();
-            for (var i = 0; i < runConfig.itemPool.Count; i++)
+            for (var i = 0; i < contentDatabase.itemPool.Count; i++)
             {
-                if ((runConfig.itemPool[i].allowedZones & zone) != 0)
+                if ((contentDatabase.itemPool[i].allowedZones & zone) != 0)
                 {
                     candidates.Add(i);
                 }
@@ -184,7 +195,7 @@ namespace GroceryQuotaHorror.Core
 
             if (candidates.Count == 0)
             {
-                return Mathf.Abs(randomSeed) % runConfig.itemPool.Count;
+                return Mathf.Abs(randomSeed) % contentDatabase.itemPool.Count;
             }
 
             var random = new System.Random(randomSeed);
@@ -199,6 +210,10 @@ namespace GroceryQuotaHorror.Core
                 {
                     liveItems[i].NetworkObject.Despawn(true);
                 }
+                else if (liveItems[i] != null)
+                {
+                    Destroy(liveItems[i].gameObject);
+                }
             }
 
             for (var i = 0; i < liveMonsters.Count; i++)
@@ -206,6 +221,10 @@ namespace GroceryQuotaHorror.Core
                 if (liveMonsters[i] != null && liveMonsters[i].NetworkObject != null && liveMonsters[i].NetworkObject.IsSpawned)
                 {
                     liveMonsters[i].NetworkObject.Despawn(true);
+                }
+                else if (liveMonsters[i] != null)
+                {
+                    Destroy(liveMonsters[i].gameObject);
                 }
             }
 
@@ -216,12 +235,12 @@ namespace GroceryQuotaHorror.Core
 
         public bool TryDepositItem(int itemIndex)
         {
-            if (!IsServer)
+            if (!IsServer && !IsOfflineLocalMode)
             {
                 return false;
             }
 
-            var item = runConfig.itemPool[itemIndex];
+            var item = contentDatabase.itemPool[itemIndex];
             var matched = false;
             for (var i = 0; i < objectiveEntries.Count; i++)
             {
@@ -240,7 +259,7 @@ namespace GroceryQuotaHorror.Core
                 var total = 0;
                 for (var i = 0; i < objectiveEntries.Count; i++)
                 {
-                    total += objectiveEntries[i].depositedCount * runConfig.itemPool[objectiveEntries[i].itemIndex].quotaValue;
+                    total += objectiveEntries[i].depositedCount * contentDatabase.itemPool[objectiveEntries[i].itemIndex].quotaValue;
                 }
 
                 if (total + item.quotaValue >= quotaValue.Value)
@@ -259,7 +278,7 @@ namespace GroceryQuotaHorror.Core
             var total = 0;
             for (var i = 0; i < objectiveEntries.Count; i++)
             {
-                total += objectiveEntries[i].depositedCount * runConfig.itemPool[objectiveEntries[i].itemIndex].quotaValue;
+                total += objectiveEntries[i].depositedCount * contentDatabase.itemPool[objectiveEntries[i].itemIndex].quotaValue;
             }
 
             return total >= quotaValue.Value;
@@ -267,13 +286,16 @@ namespace GroceryQuotaHorror.Core
 
         public void RegisterPlayerDown(ulong clientId)
         {
-            if (!IsServer)
+            if (!IsServer && !IsOfflineLocalMode)
             {
                 return;
             }
 
             downedPlayers.Add(clientId);
-            if (downedPlayers.Count >= NetworkManager.ConnectedClientsIds.Count)
+            var connectedPlayerCount = NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening
+                ? NetworkManager.ConnectedClientsIds.Count
+                : 1;
+            if (downedPlayers.Count >= connectedPlayerCount)
             {
                 runResult.Value = RunResult.TeamWipe;
             }
@@ -281,7 +303,7 @@ namespace GroceryQuotaHorror.Core
 
         public void RegisterPlayerRevived(ulong clientId)
         {
-            if (!IsServer)
+            if (!IsServer && !IsOfflineLocalMode)
             {
                 return;
             }
@@ -296,7 +318,7 @@ namespace GroceryQuotaHorror.Core
 
         public void CompleteRun()
         {
-            if (IsServer && CanExtract())
+            if ((IsServer || IsOfflineLocalMode) && CanExtract())
             {
                 runResult.Value = RunResult.Success;
             }
@@ -304,7 +326,7 @@ namespace GroceryQuotaHorror.Core
 
         private void OnNetworkStateChanged<T>(T previousValue, T newValue)
         {
-            if (runConfig != null && seed.Value >= 0 && objectiveEntries.Count == 0)
+            if (contentDatabase != null && seed.Value >= 0 && objectiveEntries.Count == 0)
             {
                 BuildObjectiveList(seed.Value);
             }

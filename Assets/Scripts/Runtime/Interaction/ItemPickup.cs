@@ -1,3 +1,4 @@
+using GroceryQuotaHorror.Bootstrap;
 using GroceryQuotaHorror.Core;
 using GroceryQuotaHorror.Data;
 using GroceryQuotaHorror.Player;
@@ -15,15 +16,18 @@ namespace GroceryQuotaHorror.Interaction
         private readonly NetworkVariable<int> definitionIndex = new(-1);
         private readonly NetworkVariable<ulong> holderId = new(ulong.MaxValue);
 
-        private RunConfig runConfig;
+        private GameContentDatabase contentDatabase;
         private Rigidbody body;
+        private PlayerController localHolder;
 
-        public string Prompt => holderId.Value == ulong.MaxValue ? "Pick up" : string.Empty;
+        private bool IsOfflineLocalMode => NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening || NetworkBootstrap.LocalOfflineMode;
+
+        public string Prompt => holderId.Value == ulong.MaxValue && localHolder == null ? "Pick up" : string.Empty;
         public int DefinitionIndex => definitionIndex.Value;
 
-        public void Initialize(int itemIndex, RunConfig config)
+        public void Initialize(int itemIndex, GameContentDatabase content)
         {
-            runConfig = config;
+            contentDatabase = content;
             definitionIndex.Value = itemIndex;
         }
 
@@ -38,9 +42,9 @@ namespace GroceryQuotaHorror.Interaction
 
         public override void OnNetworkSpawn()
         {
-            if (runConfig == null && NightGameManager.Instance != null)
+            if (contentDatabase == null)
             {
-                runConfig = NightGameManager.Instance.RunConfig;
+                contentDatabase = NightGameManager.Instance != null ? NightGameManager.Instance.ContentDatabase : GameRuntime.Content;
             }
 
             ApplyVisuals();
@@ -48,23 +52,28 @@ namespace GroceryQuotaHorror.Interaction
 
         private void Update()
         {
-            if (!IsServer || holderId.Value == ulong.MaxValue)
+            if ((!IsServer && !IsOfflineLocalMode) || (holderId.Value == ulong.MaxValue && localHolder == null) || GameRuntime.Balance == null)
             {
                 return;
             }
 
-            if (!NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(holderId.Value, out var networkObject))
-            {
-                return;
-            }
-
-            var player = networkObject.GetComponent<PlayerController>();
+            var player = localHolder;
             if (player == null)
             {
-                return;
+                if (NetworkManager.Singleton == null || !NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(holderId.Value, out var networkObject))
+                {
+                    return;
+                }
+
+                player = networkObject.GetComponent<PlayerController>();
+                if (player == null)
+                {
+                    return;
+                }
             }
 
-            var anchor = player.transform.position + player.transform.forward * 1.1f + Vector3.up * 1.1f;
+            var interaction = GameRuntime.Balance.interaction;
+            var anchor = player.transform.position + player.transform.forward * interaction.heldItemForwardOffset + Vector3.up * interaction.heldItemUpOffset;
             transform.SetPositionAndRotation(anchor, Quaternion.Euler(0f, player.transform.eulerAngles.y, 0f));
         }
 
@@ -73,9 +82,25 @@ namespace GroceryQuotaHorror.Interaction
             player.RequestPickup(this);
         }
 
+        public void LocalPickup(PlayerController player)
+        {
+            localHolder = player;
+            holderId.Value = ulong.MaxValue;
+            body.isKinematic = true;
+        }
+
+        public void LocalDrop(Vector3 position)
+        {
+            localHolder = null;
+            holderId.Value = ulong.MaxValue;
+            body.isKinematic = false;
+            transform.position = position;
+        }
+
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
         public void PickupServerRpc(ulong playerId)
         {
+            localHolder = null;
             holderId.Value = playerId;
             body.isKinematic = true;
         }
@@ -83,6 +108,7 @@ namespace GroceryQuotaHorror.Interaction
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
         public void DropServerRpc(Vector3 position)
         {
+            localHolder = null;
             holderId.Value = ulong.MaxValue;
             body.isKinematic = false;
             transform.position = position;
@@ -94,16 +120,20 @@ namespace GroceryQuotaHorror.Interaction
             {
                 NetworkObject.Despawn(true);
             }
+            else if (IsOfflineLocalMode)
+            {
+                Destroy(gameObject);
+            }
         }
 
         private void ApplyVisuals()
         {
-            if (runConfig == null || definitionIndex.Value < 0 || definitionIndex.Value >= runConfig.itemPool.Count || meshRenderer == null)
+            if (contentDatabase == null || definitionIndex.Value < 0 || definitionIndex.Value >= contentDatabase.itemPool.Count || meshRenderer == null)
             {
                 return;
             }
 
-            meshRenderer.sharedMaterial.color = runConfig.itemPool[definitionIndex.Value].tint;
+            meshRenderer.sharedMaterial.color = contentDatabase.itemPool[definitionIndex.Value].tint;
         }
     }
 }
