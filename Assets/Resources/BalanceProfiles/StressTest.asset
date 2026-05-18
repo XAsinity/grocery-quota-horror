@@ -22,11 +22,27 @@ MonoBehaviour:
     maxLookPitch: 80
     mouseTurnRate: 120
     cameraHeight: 1.55
-    movementSmoothing: 10
+    movementSmoothing: 8
+    airControlMultiplier: 0.45
+    groundStickForce: 4
+    groundedMaxFallSpeed: -7
+    groundVelocityFollow: 0.95
+    jumpVelocity: 6.4
+    jumpCooldown: 0.18
+    jumpBufferSeconds: 0.12
+    landingCompression: 1
+    landingRecoverySpeed: 7
   playerCamera:
     supportedLocalOffset: {x: 0, y: 1.55, z: 0}
+    supportedHeadLocalOffset: {x: 0, y: 0.03, z: 0.06}
+    supportedHeadPositionWeight: 0.72
+    supportedHeadRotationWeight: 0.42
+    supportedFollowPositionSharpness: 18
+    supportedFollowRotationSharpness: 16
+    supportedSnapDistance: 0.35
     limpFollowPositionSharpness: 10
     limpFollowRotationSharpness: 8
+    limpSnapDistance: 0.65
     recoveryBlendSeconds: 0.22
   playerBody:
     pelvisFollowForce: 160
@@ -44,11 +60,28 @@ MonoBehaviour:
     supportedBobFrequency: 5.5
     supportedMoveLean: 10
     sprintLeanBonus: 6
+    supportedLookYawDegrees: 28
+    supportedLookYawReturnSharpness: 7
+    spinePoseSharpness: 10
+    headPoseSharpness: 14
+    armPoseSharpness: 1.1
+    legPoseSharpness: 7.5
+    supportedUpperArmSpring: 4.5
+    supportedUpperArmDamping: 0.9
+    supportedLowerArmSpring: 1.75
+    supportedLowerArmDamping: 0.45
     headPitchWeight: 0.5
+    headYawWeight: 0.85
     chestPitchWeight: 0.18
-    armSwingDegrees: 16
+    chestYawWeight: 0.35
+    shoulderYawWeight: 0.18
+    shoulderRollDegrees: 12
+    armHangDegrees: 18
+    armLowerBendDegrees: 16
+    handRelaxDegrees: 8
+    armSwingDegrees: 12
     legStrideDegrees: 18
-    armDragDegrees: 6
+    armDragDegrees: 4
     airborneTuckDegrees: 10
     stumbleResponse: 0.04
   ragdoll:
@@ -58,7 +91,6 @@ MonoBehaviour:
     jointTwistLimit: 20
     headLookTorque: 2.4
     headLiftForce: 0.65
-    restoreHeightOffset: 0.15
     recoveryAssistForce: 24
     ragdollHoldForce: 140
     ragdollHoldDamping: 2.5
@@ -67,7 +99,7 @@ MonoBehaviour:
     ragdollHeldVerticalAssist: 0.7
     ragdollHeldMaxForce: 140
   interaction:
-    interactRange: 3.2
+    interactRange: 4.5
     hideOffset: 0.5
     heldItemForwardOffset: 1.1
     heldItemUpOffset: 1.1

@@ -136,7 +136,9 @@ GameObject:
   - component: {fileID: 3416190066023264020}
   - component: {fileID: 7362795341212205044}
   - component: {fileID: 589562303707559316}
+  - component: {fileID: 7381876174950195741}
   - component: {fileID: 7490478349355106464}
+  - component: {fileID: 1909539171570483750}
   - component: {fileID: 8129846848062821636}
   m_Layer: 0
   m_Name: Player
@@ -180,13 +182,13 @@ CharacterController:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Height: 2.398851
+  m_Height: 2.6074467
   m_Radius: 0.44418097
   m_SlopeLimit: 45
   m_StepOffset: 0.3
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
-  m_Center: {x: 0.041767415, y: 0.732842, z: -0.028452516}
+  m_Center: {x: 0.041767415, y: 1.3037233, z: -0.028452516}
 --- !u!114 &7362795341212205044
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -199,7 +201,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 922211721
+  GlobalObjectIdHash: 1446937334
   InScenePlacedSourceGlobalObjectIdHash: 0
   DeferredDespawnTick: 0
   Ownership: 1
@@ -258,6 +260,33 @@ MonoBehaviour:
   SwitchTransformSpaceWhenParented: 0
   Interpolate: 1
   SlerpPosition: 0
+--- !u!54 &7381876174950195741
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8643136222494817240}
+  serializedVersion: 5
+  m_Mass: 70
+  m_LinearDamping: 0
+  m_AngularDamping: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 0
+  m_IsKinematic: 0
+  m_Interpolate: 1
+  m_Constraints: 80
+  m_CollisionDetection: 2
 --- !u!114 &7490478349355106464
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -276,7 +305,8 @@ MonoBehaviour:
   - {fileID: 837997956951963491}
   spawnableRagdollPrefab: {fileID: 8897307293780869580, guid: 6b338ff7a68eef74da206dbe0e1f8996, type: 3}
   activeRagdoll: {fileID: 8129846848062821636}
---- !u!114 &8129846848062821636
+  looseBody: {fileID: 1909539171570483750}
+--- !u!114 &1909539171570483750
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -284,6 +314,19 @@ MonoBehaviour:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8643136222494817240}
   m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7fcd3eb3e0e94e449a05278ab4c554e7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GroceryQuotaHorror.Player.PlayerLooseBodyController
+  modelRoot: {fileID: 8877719976171030154}
+--- !u!114 &8129846848062821636
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8643136222494817240}
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: dc7650eba7913614ebe50783d999b986, type: 3}
   m_Name: 

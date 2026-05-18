@@ -5,6 +5,15 @@ using UnityEngine;
 
 namespace GroceryQuotaHorror.Player
 {
+    public enum RagdollLiePose
+    {
+        Unknown,
+        FaceUp,
+        FaceDown,
+        Side
+    }
+
+    [DefaultExecutionOrder(-100)]
     public sealed class ActiveRagdollController : MonoBehaviour
     {
         [Serializable]
@@ -25,14 +34,18 @@ namespace GroceryQuotaHorror.Player
 
         private static readonly BoneConfig[] BoneConfigs =
         {
-            new() { bone = HumanBodyBones.Hips, parentBone = HumanBodyBones.LastBone, colliderType = PrimitiveType.Cube, colliderCenter = new Vector3(0f, 0.04f, 0f), colliderSize = new Vector3(0.24f, 0.18f, 0.18f), mass = 2.6f, childHint = HumanBodyBones.Spine },
-            new() { bone = HumanBodyBones.Spine, parentBone = HumanBodyBones.Hips, colliderType = PrimitiveType.Cube, colliderCenter = new Vector3(0f, 0.09f, 0f), colliderSize = new Vector3(0.24f, 0.22f, 0.18f), mass = 2f, childHint = HumanBodyBones.Chest },
-            new() { bone = HumanBodyBones.Chest, parentBone = HumanBodyBones.Spine, colliderType = PrimitiveType.Cube, colliderCenter = new Vector3(0f, 0.1f, 0f), colliderSize = new Vector3(0.28f, 0.24f, 0.2f), mass = 2.2f, childHint = HumanBodyBones.Head },
+            new() { bone = HumanBodyBones.Hips, parentBone = HumanBodyBones.LastBone, colliderType = PrimitiveType.Cube, colliderCenter = new Vector3(0f, 0.04f, 0f), colliderSize = new Vector3(0.3f, 0.2f, 0.24f), mass = 2.6f, childHint = HumanBodyBones.Spine },
+            new() { bone = HumanBodyBones.Spine, parentBone = HumanBodyBones.Hips, colliderType = PrimitiveType.Cube, colliderCenter = new Vector3(0f, 0.1f, 0f), colliderSize = new Vector3(0.3f, 0.24f, 0.24f), mass = 2f, childHint = HumanBodyBones.Chest },
+            new() { bone = HumanBodyBones.Chest, parentBone = HumanBodyBones.Spine, colliderType = PrimitiveType.Cube, colliderCenter = new Vector3(0f, 0.11f, 0.02f), colliderSize = new Vector3(0.36f, 0.28f, 0.28f), mass = 2.2f, childHint = HumanBodyBones.Head },
             new() { bone = HumanBodyBones.Head, parentBone = HumanBodyBones.Chest, colliderType = PrimitiveType.Sphere, colliderCenter = new Vector3(0f, 0.08f, 0f), colliderSize = new Vector3(0.18f, 0.18f, 0.18f), mass = 1f },
-            new() { bone = HumanBodyBones.LeftUpperArm, parentBone = HumanBodyBones.Chest, colliderType = PrimitiveType.Capsule, colliderCenter = new Vector3(-0.12f, 0f, 0f), colliderSize = new Vector3(0.09f, 0.28f, 0.09f), mass = 0.7f, childHint = HumanBodyBones.LeftLowerArm },
-            new() { bone = HumanBodyBones.LeftLowerArm, parentBone = HumanBodyBones.LeftUpperArm, colliderType = PrimitiveType.Capsule, colliderCenter = new Vector3(-0.14f, 0f, 0f), colliderSize = new Vector3(0.08f, 0.26f, 0.08f), mass = 0.6f, childHint = HumanBodyBones.LeftHand },
-            new() { bone = HumanBodyBones.RightUpperArm, parentBone = HumanBodyBones.Chest, colliderType = PrimitiveType.Capsule, colliderCenter = new Vector3(0.12f, 0f, 0f), colliderSize = new Vector3(0.09f, 0.28f, 0.09f), mass = 0.7f, childHint = HumanBodyBones.RightLowerArm },
-            new() { bone = HumanBodyBones.RightLowerArm, parentBone = HumanBodyBones.RightUpperArm, colliderType = PrimitiveType.Capsule, colliderCenter = new Vector3(0.14f, 0f, 0f), colliderSize = new Vector3(0.08f, 0.26f, 0.08f), mass = 0.6f, childHint = HumanBodyBones.RightHand },
+            new() { bone = HumanBodyBones.LeftShoulder, parentBone = HumanBodyBones.Chest, colliderType = PrimitiveType.Sphere, colliderCenter = new Vector3(-0.04f, 0f, 0f), colliderSize = new Vector3(0.12f, 0.12f, 0.12f), mass = 0.3f, childHint = HumanBodyBones.LeftUpperArm },
+            new() { bone = HumanBodyBones.LeftUpperArm, parentBone = HumanBodyBones.LeftShoulder, colliderType = PrimitiveType.Capsule, colliderCenter = new Vector3(-0.12f, 0f, 0f), colliderSize = new Vector3(0.09f, 0.28f, 0.09f), mass = 0.7f, childHint = HumanBodyBones.LeftLowerArm },
+            new() { bone = HumanBodyBones.LeftLowerArm, parentBone = HumanBodyBones.LeftUpperArm, colliderType = PrimitiveType.Capsule, colliderCenter = new Vector3(-0.14f, 0f, 0f), colliderSize = new Vector3(0.1f, 0.28f, 0.1f), mass = 0.6f, childHint = HumanBodyBones.LeftHand },
+            new() { bone = HumanBodyBones.LeftHand, parentBone = HumanBodyBones.LeftLowerArm, colliderType = PrimitiveType.Sphere, colliderCenter = new Vector3(-0.04f, 0f, 0f), colliderSize = new Vector3(0.1f, 0.1f, 0.1f), mass = 0.25f },
+            new() { bone = HumanBodyBones.RightShoulder, parentBone = HumanBodyBones.Chest, colliderType = PrimitiveType.Sphere, colliderCenter = new Vector3(0.04f, 0f, 0f), colliderSize = new Vector3(0.12f, 0.12f, 0.12f), mass = 0.3f, childHint = HumanBodyBones.RightUpperArm },
+            new() { bone = HumanBodyBones.RightUpperArm, parentBone = HumanBodyBones.RightShoulder, colliderType = PrimitiveType.Capsule, colliderCenter = new Vector3(0.12f, 0f, 0f), colliderSize = new Vector3(0.09f, 0.28f, 0.09f), mass = 0.7f, childHint = HumanBodyBones.RightLowerArm },
+            new() { bone = HumanBodyBones.RightLowerArm, parentBone = HumanBodyBones.RightUpperArm, colliderType = PrimitiveType.Capsule, colliderCenter = new Vector3(0.14f, 0f, 0f), colliderSize = new Vector3(0.1f, 0.28f, 0.1f), mass = 0.6f, childHint = HumanBodyBones.RightHand },
+            new() { bone = HumanBodyBones.RightHand, parentBone = HumanBodyBones.RightLowerArm, colliderType = PrimitiveType.Sphere, colliderCenter = new Vector3(0.04f, 0f, 0f), colliderSize = new Vector3(0.1f, 0.1f, 0.1f), mass = 0.25f },
             new() { bone = HumanBodyBones.LeftUpperLeg, parentBone = HumanBodyBones.Hips, colliderType = PrimitiveType.Capsule, colliderCenter = new Vector3(0f, -0.2f, 0f), colliderSize = new Vector3(0.1f, 0.42f, 0.1f), mass = 1.2f, childHint = HumanBodyBones.LeftLowerLeg },
             new() { bone = HumanBodyBones.LeftLowerLeg, parentBone = HumanBodyBones.LeftUpperLeg, colliderType = PrimitiveType.Capsule, colliderCenter = new Vector3(0f, -0.18f, 0f), colliderSize = new Vector3(0.08f, 0.38f, 0.08f), mass = 1f, childHint = HumanBodyBones.LeftFoot },
             new() { bone = HumanBodyBones.RightUpperLeg, parentBone = HumanBodyBones.Hips, colliderType = PrimitiveType.Capsule, colliderCenter = new Vector3(0f, -0.2f, 0f), colliderSize = new Vector3(0.1f, 0.42f, 0.1f), mass = 1.2f, childHint = HumanBodyBones.RightLowerLeg },
@@ -41,16 +54,43 @@ namespace GroceryQuotaHorror.Player
             new() { bone = HumanBodyBones.RightFoot, parentBone = HumanBodyBones.RightLowerLeg, colliderType = PrimitiveType.Cube, colliderCenter = new Vector3(0f, 0f, 0.08f), colliderSize = new Vector3(0.09f, 0.08f, 0.22f), mass = 0.4f, childHint = HumanBodyBones.RightToes }
         };
 
+        private static readonly HumanBodyBones[] VisualBones =
+        {
+            HumanBodyBones.Hips,
+            HumanBodyBones.Spine,
+            HumanBodyBones.Chest,
+            HumanBodyBones.UpperChest,
+            HumanBodyBones.LeftShoulder,
+            HumanBodyBones.RightShoulder,
+            HumanBodyBones.Neck,
+            HumanBodyBones.Head,
+            HumanBodyBones.LeftUpperArm,
+            HumanBodyBones.LeftLowerArm,
+            HumanBodyBones.LeftHand,
+            HumanBodyBones.RightUpperArm,
+            HumanBodyBones.RightLowerArm,
+            HumanBodyBones.RightHand,
+            HumanBodyBones.LeftUpperLeg,
+            HumanBodyBones.LeftLowerLeg,
+            HumanBodyBones.LeftFoot,
+            HumanBodyBones.RightUpperLeg,
+            HumanBodyBones.RightLowerLeg,
+            HumanBodyBones.RightFoot
+        };
+
         private readonly Dictionary<HumanBodyBones, Rigidbody> rigidBodies = new();
         private readonly Dictionary<HumanBodyBones, Quaternion> baseLocalRotations = new();
         private readonly Dictionary<HumanBodyBones, Vector3> baseLocalPositions = new();
+        private readonly Dictionary<HumanBodyBones, Vector3> baseRootLocalPositions = new();
         private readonly List<Collider> ragdollColliders = new();
+        private readonly List<CharacterJoint> ragdollJoints = new();
         private readonly ProceduralPoseSource proceduralPoseSource = new();
 
         private Animator animator;
-        private CharacterController rootController;
+        private Collider[] rootColliders;
         private IPlayerPoseSource poseSource;
         private BodyDriveState state = BodyDriveState.Supported;
+        private bool initialized;
         private bool ragdollBuilt;
         private Vector3 lastRootPosition;
         private float recentImpact;
@@ -59,8 +99,10 @@ namespace GroceryQuotaHorror.Player
         private float cachedSpeed01;
         private bool cachedSprinting;
         private bool cachedGrounded;
+        private float cachedLookYaw;
         private float cachedLookPitch;
         private Vector3 hipsAnchorLocalPosition;
+        private PlayerPoseContext lastSupportedContext;
 
         public BodyDriveState State => state;
         public bool IsAvailable => ragdollBuilt;
@@ -69,6 +111,19 @@ namespace GroceryQuotaHorror.Player
 
         private void Awake()
         {
+            // The controllable player no longer builds ragdoll physics on its visible skinned bones at startup.
+            // Building joints directly on the render rig can stretch the mesh badly; initialize explicitly only
+            // for isolated ragdoll experiments until the player gets a separate physics puppet rig.
+        }
+
+        public bool EnsureInitialized()
+        {
+            if (initialized)
+            {
+                return ragdollBuilt;
+            }
+
+            initialized = true;
             if (modelRoot == null)
             {
                 modelRoot = transform.Find("VisualRoot");
@@ -79,12 +134,12 @@ namespace GroceryQuotaHorror.Player
                 modelRoot = transform.GetChild(0);
             }
 
-            rootController = GetComponent<CharacterController>();
+            rootColliders = GetComponents<Collider>();
             animator = modelRoot != null ? modelRoot.GetComponentInChildren<Animator>() : null;
             if (animator == null || !animator.isHuman)
             {
                 Debug.LogWarning($"{name} is missing a humanoid animator for active ragdoll setup.", this);
-                return;
+                return false;
             }
 
             poseSource = proceduralPoseSource;
@@ -93,12 +148,13 @@ namespace GroceryQuotaHorror.Player
             if (!ragdollBuilt)
             {
                 Debug.LogWarning($"{name} could not finish active ragdoll setup. The player will stay in supported character mode until the rig setup succeeds.", this);
-                return;
+                return false;
             }
 
             IgnoreRootCollisions();
             SetState(BodyDriveState.Supported, true);
             lastRootPosition = transform.position;
+            return ragdollBuilt;
         }
 
         private void FixedUpdate()
@@ -116,7 +172,13 @@ namespace GroceryQuotaHorror.Player
             if (state == BodyDriveState.Limp)
             {
                 ApplyLimpState();
+                return;
             }
+
+            var context = BuildPoseContext(Time.fixedDeltaTime, true);
+            lastSupportedContext = context;
+            ApplySupportedState(context, true);
+            ApplySupportedDynamicLimbState(context);
         }
 
         private void LateUpdate()
@@ -126,18 +188,7 @@ namespace GroceryQuotaHorror.Player
                 return;
             }
 
-            recoveryTimer = Mathf.MoveTowards(recoveryTimer, 1f, Time.deltaTime * 1.8f);
-            var context = new PlayerPoseContext(
-                Time.time,
-                cachedLocalMove,
-                cachedSpeed01,
-                cachedSprinting,
-                cachedGrounded,
-                cachedLookPitch,
-                recentImpact,
-                recoveryTimer);
-
-            ApplySupportedState(context);
+            ApplySupportedState(lastSupportedContext, false);
         }
 
         public void SetState(BodyDriveState nextState, bool instant = false)
@@ -147,8 +198,13 @@ namespace GroceryQuotaHorror.Player
                 return;
             }
 
+            if (nextState == BodyDriveState.Limp)
+            {
+                SyncRigidbodiesToCurrentPose();
+            }
+
             state = nextState;
-            recoveryTimer = instant || nextState == BodyDriveState.Supported ? 1f : 0f;
+            recoveryTimer = instant ? 1f : 0f;
             ConfigureBodiesForState();
         }
 
@@ -162,12 +218,13 @@ namespace GroceryQuotaHorror.Player
             SetState(state == BodyDriveState.Limp ? BodyDriveState.Supported : BodyDriveState.Limp);
         }
 
-        public void UpdateSupportedMotion(Vector3 localMove, float speed01, bool sprinting, bool grounded, float lookPitch)
+        public void UpdateSupportedMotion(Vector3 localMove, float speed01, bool sprinting, bool grounded, float lookYaw, float lookPitch)
         {
             cachedLocalMove = localMove;
             cachedSpeed01 = speed01;
             cachedSprinting = sprinting;
             cachedGrounded = grounded;
+            cachedLookYaw = lookYaw;
             cachedLookPitch = lookPitch;
         }
 
@@ -190,9 +247,116 @@ namespace GroceryQuotaHorror.Player
             headBody.AddForce(Vector3.up * (Mathf.Abs(mouseY) * ragdoll.headLiftForce), ForceMode.Acceleration);
         }
 
+        public void ApplyLimpVelocity(Vector3 linearVelocity, Vector3 angularVelocity, Vector3 impulse)
+        {
+            if (!ragdollBuilt || state != BodyDriveState.Limp)
+            {
+                return;
+            }
+
+            foreach (var body in rigidBodies.Values)
+            {
+                if (body == null || body.isKinematic)
+                {
+                    continue;
+                }
+
+                body.linearVelocity = linearVelocity;
+                body.angularVelocity = angularVelocity;
+                if (impulse.sqrMagnitude > 0.0001f)
+                {
+                    body.AddForce(impulse, ForceMode.Impulse);
+                }
+
+                body.WakeUp();
+            }
+        }
+
         public Rigidbody GetBoneRigidbody(HumanBodyBones bone)
         {
             return rigidBodies.TryGetValue(bone, out var body) ? body : null;
+        }
+
+        public bool TryGetCurrentRagdollCenterOfMass(out Vector3 centerOfMass)
+        {
+            centerOfMass = Vector3.zero;
+            var totalMass = 0f;
+            foreach (var body in rigidBodies.Values)
+            {
+                if (body == null)
+                {
+                    continue;
+                }
+
+                var mass = Mathf.Max(0.01f, body.mass);
+                centerOfMass += body.worldCenterOfMass * mass;
+                totalMass += mass;
+            }
+
+            if (totalMass <= 0f)
+            {
+                return false;
+            }
+
+            centerOfMass /= totalMass;
+            return true;
+        }
+
+        public Quaternion GetCurrentRagdollYaw()
+        {
+            return ragdollBuilt ? CalculateCurrentBodyYaw() : Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
+        }
+
+        public RagdollLiePose GetCurrentLiePose()
+        {
+            if (!ragdollBuilt)
+            {
+                return RagdollLiePose.Unknown;
+            }
+
+            if (!TryGetBoneUp(HumanBodyBones.Chest, out var torsoUp) &&
+                !TryGetBoneUp(HumanBodyBones.Spine, out torsoUp) &&
+                !TryGetBoneUp(HumanBodyBones.Hips, out torsoUp))
+            {
+                return RagdollLiePose.Unknown;
+            }
+
+            var upDot = Vector3.Dot(torsoUp.normalized, Vector3.up);
+            if (upDot > 0.45f)
+            {
+                return RagdollLiePose.FaceUp;
+            }
+
+            if (upDot < -0.45f)
+            {
+                return RagdollLiePose.FaceDown;
+            }
+
+            return RagdollLiePose.Side;
+        }
+
+        private bool TryGetBoneUp(HumanBodyBones boneType, out Vector3 up)
+        {
+            up = Vector3.zero;
+            var body = GetBoneRigidbody(boneType);
+            var bone = GetBoneTransform(boneType);
+            if (body != null)
+            {
+                up = body.transform.up;
+            }
+
+            if (up.sqrMagnitude < 0.0001f && bone != null)
+            {
+                up = bone.up;
+            }
+
+            if (up.sqrMagnitude < 0.0001f)
+            {
+                return false;
+            }
+
+            up.Normalize();
+            return true;
         }
 
         public Transform GetBoneTransform(HumanBodyBones bone)
@@ -200,19 +364,217 @@ namespace GroceryQuotaHorror.Player
             return animator != null ? animator.GetBoneTransform(bone) : null;
         }
 
-        private void CacheBaseLocalRotations()
+        public void FreezeRagdollPoseForRecovery(Vector3 rootPosition, Quaternion rootRotation)
         {
-            for (var i = 0; i < BoneConfigs.Length; i++)
+            if (!ragdollBuilt || animator == null)
             {
-                var bone = animator.GetBoneTransform(BoneConfigs[i].bone);
-                if (bone != null)
+                return;
+            }
+
+            var capturedBonePositions = new Dictionary<HumanBodyBones, Vector3>();
+            var capturedBoneRotations = new Dictionary<HumanBodyBones, Quaternion>();
+            for (var i = 0; i < VisualBones.Length; i++)
+            {
+                var boneType = VisualBones[i];
+                var bone = animator.GetBoneTransform(boneType);
+                if (bone == null)
                 {
-                    baseLocalRotations[BoneConfigs[i].bone] = bone.localRotation;
-                    baseLocalPositions[BoneConfigs[i].bone] = transform.InverseTransformPoint(bone.position);
+                    continue;
+                }
+
+                capturedBonePositions[boneType] = bone.position;
+                capturedBoneRotations[boneType] = bone.rotation;
+            }
+
+            transform.SetPositionAndRotation(rootPosition, rootRotation);
+            foreach (var pair in capturedBonePositions)
+            {
+                var bone = animator.GetBoneTransform(pair.Key);
+                if (bone == null)
+                {
+                    continue;
+                }
+
+                bone.SetPositionAndRotation(pair.Value, capturedBoneRotations[pair.Key]);
+            }
+
+            for (var i = 0; i < ragdollColliders.Count; i++)
+            {
+                if (ragdollColliders[i] != null)
+                {
+                    ragdollColliders[i].enabled = false;
                 }
             }
 
-            if (baseLocalPositions.TryGetValue(HumanBodyBones.Hips, out var hipsLocalPosition))
+            foreach (var body in rigidBodies.Values)
+            {
+                if (body == null)
+                {
+                    continue;
+                }
+
+                if (!body.isKinematic)
+                {
+                    body.linearVelocity = Vector3.zero;
+                    body.angularVelocity = Vector3.zero;
+                }
+
+                body.isKinematic = true;
+                body.useGravity = false;
+                body.detectCollisions = false;
+            }
+
+            state = BodyDriveState.Supported;
+            lastRootPosition = transform.position;
+            UnityEngine.Physics.SyncTransforms();
+        }
+
+        private Quaternion CalculateCurrentBodyYaw()
+        {
+            var forward = Vector3.zero;
+            var chestBody = GetBoneRigidbody(HumanBodyBones.Chest);
+            var headBody = GetBoneRigidbody(HumanBodyBones.Head);
+            if (chestBody != null)
+            {
+                forward += Vector3.ProjectOnPlane(chestBody.transform.forward, Vector3.up);
+            }
+
+            if (headBody != null)
+            {
+                forward += Vector3.ProjectOnPlane(headBody.transform.forward, Vector3.up) * 0.35f;
+            }
+
+            if (forward.sqrMagnitude < 0.0001f)
+            {
+                var chest = GetBoneTransform(HumanBodyBones.Chest);
+                var hips = GetBoneTransform(HumanBodyBones.Hips);
+                if (chest != null && hips != null)
+                {
+                    forward = Vector3.ProjectOnPlane(chest.position - hips.position, Vector3.up);
+                }
+            }
+
+            if (forward.sqrMagnitude < 0.0001f)
+            {
+                forward = transform.forward;
+            }
+
+            return Quaternion.LookRotation(forward.normalized, Vector3.up);
+        }
+
+        public void ReleaseRuntimeRagdollComponents()
+        {
+            for (var i = 0; i < ragdollJoints.Count; i++)
+            {
+                if (ragdollJoints[i] != null)
+                {
+                    ragdollJoints[i].connectedBody = null;
+                    Destroy(ragdollJoints[i]);
+                }
+            }
+
+            for (var i = 0; i < ragdollColliders.Count; i++)
+            {
+                if (ragdollColliders[i] != null)
+                {
+                    Destroy(ragdollColliders[i]);
+                }
+            }
+
+            foreach (var body in rigidBodies.Values)
+            {
+                if (body != null)
+                {
+                    body.isKinematic = true;
+                    body.useGravity = false;
+                    body.detectCollisions = false;
+                    Destroy(body);
+                }
+            }
+
+            ragdollJoints.Clear();
+            ragdollColliders.Clear();
+            rigidBodies.Clear();
+            ragdollBuilt = false;
+            initialized = false;
+        }
+
+        public bool TryGetCameraTargetPose(float lookPitch, out Vector3 targetPosition, out Quaternion targetRotation)
+        {
+            targetPosition = transform.TransformPoint(GameRuntime.Balance != null ? GameRuntime.Balance.playerCamera.supportedLocalOffset : Vector3.up * 1.55f);
+            targetRotation = Quaternion.Euler(lookPitch, transform.eulerAngles.y, 0f);
+            if (!ragdollBuilt || GameRuntime.Balance == null)
+            {
+                return false;
+            }
+
+            var camera = GameRuntime.Balance.playerCamera;
+            var head = HeadTransform;
+            if (head == null)
+            {
+                return false;
+            }
+
+            var intendedRotation = Quaternion.Euler(lookPitch, transform.eulerAngles.y, 0f);
+            if (state == BodyDriveState.Limp)
+            {
+                targetPosition = head.TransformPoint(camera.supportedHeadLocalOffset);
+                var forward = Vector3.ProjectOnPlane(head.forward, Vector3.up);
+                if (forward.sqrMagnitude < 0.0001f)
+                {
+                    forward = transform.forward;
+                }
+
+                targetRotation = Quaternion.LookRotation(forward.normalized, Vector3.up);
+                return true;
+            }
+
+            var fallbackPosition = transform.TransformPoint(camera.supportedLocalOffset);
+            targetPosition = fallbackPosition;
+            if ((head.position - transform.position).sqrMagnitude < 9f)
+            {
+                targetPosition.y = head.position.y + camera.supportedHeadLocalOffset.y;
+            }
+
+            targetRotation = intendedRotation;
+            return true;
+        }
+
+        private PlayerPoseContext BuildPoseContext(float deltaTime, bool advanceRecovery)
+        {
+            if (advanceRecovery)
+            {
+                var recoverySeconds = Mathf.Max(0.01f, GameRuntime.Balance.playerCamera.recoveryBlendSeconds);
+                recoveryTimer = Mathf.MoveTowards(recoveryTimer, 1f, deltaTime / recoverySeconds);
+            }
+
+            return new PlayerPoseContext(
+                Time.time,
+                cachedLocalMove,
+                cachedSpeed01,
+                cachedSprinting,
+                cachedGrounded,
+                cachedLookYaw,
+                cachedLookPitch,
+                recentImpact,
+                recoveryTimer);
+        }
+
+        private void CacheBaseLocalRotations()
+        {
+            for (var i = 0; i < VisualBones.Length; i++)
+            {
+                var boneType = VisualBones[i];
+                var bone = animator.GetBoneTransform(boneType);
+                if (bone != null)
+                {
+                    baseLocalRotations[boneType] = bone.localRotation;
+                    baseLocalPositions[boneType] = bone.localPosition;
+                    baseRootLocalPositions[boneType] = transform.InverseTransformPoint(bone.position);
+                }
+            }
+
+            if (baseRootLocalPositions.TryGetValue(HumanBodyBones.Hips, out var hipsLocalPosition))
             {
                 hipsAnchorLocalPosition = hipsLocalPosition;
             }
@@ -222,53 +584,221 @@ namespace GroceryQuotaHorror.Player
             }
         }
 
-        private void ApplySupportedState(in PlayerPoseContext context)
+        private void ApplySupportedState(in PlayerPoseContext context, bool physicsPass)
         {
             var balance = GameRuntime.Balance;
             var body = balance.playerBody;
             var multiplier = state == BodyDriveState.Downed ? body.downedDriveMultiplier : body.supportedDriveMultiplier;
-            var poseSharpness = state == BodyDriveState.Downed ? 10f : 18f;
-            var hips = GetBoneTransform(HumanBodyBones.Hips);
-            if (hips != null)
+            var deltaTime = physicsPass ? Time.fixedDeltaTime : Time.deltaTime;
+            for (var i = 0; i < VisualBones.Length; i++)
             {
-                var targetLocalPosition = hipsAnchorLocalPosition + poseSource.GetPelvisOffset(context, balance);
-                var currentLocalPosition = transform.InverseTransformPoint(hips.position);
-                var nextLocalPosition = Vector3.Lerp(
-                    currentLocalPosition,
-                    targetLocalPosition,
-                    1f - Mathf.Exp(-body.pelvisFollowForce * 0.02f * Time.deltaTime));
-                hips.position = transform.TransformPoint(nextLocalPosition);
-            }
-
-            for (var i = 0; i < BoneConfigs.Length; i++)
-            {
-                if (!baseLocalRotations.TryGetValue(BoneConfigs[i].bone, out var baseRotation))
+                var visualBone = VisualBones[i];
+                if (!baseLocalRotations.TryGetValue(visualBone, out var baseRotation))
                 {
                     continue;
                 }
 
-                var bone = animator.GetBoneTransform(BoneConfigs[i].bone);
+                var bone = animator.GetBoneTransform(visualBone);
                 if (bone == null)
                 {
                     continue;
                 }
 
-                if (BoneConfigs[i].bone == HumanBodyBones.Hips)
+                if (ShouldLetPhysicsDriveBone(visualBone))
                 {
-                    var hipsLocal = poseSource.GetLocalRotation(BoneConfigs[i].bone, context, baseRotation, balance);
-                    bone.localRotation = Quaternion.Slerp(
-                        bone.localRotation,
-                        hipsLocal,
-                        1f - Mathf.Exp(-body.pelvisTorque * 0.04f * multiplier * Time.deltaTime));
                     continue;
                 }
 
-                var desiredLocal = poseSource.GetLocalRotation(BoneConfigs[i].bone, context, baseRotation, balance);
+                if (visualBone == HumanBodyBones.Hips)
+                {
+                    var hipsLocal = poseSource.GetLocalRotation(visualBone, context, baseRotation, balance);
+                    bone.localRotation = Quaternion.Slerp(
+                        bone.localRotation,
+                        hipsLocal,
+                        1f - Mathf.Exp(-body.pelvisTorque * 0.08f * multiplier * deltaTime));
+                    continue;
+                }
+
+                var desiredLocal = poseSource.GetLocalRotation(visualBone, context, baseRotation, balance);
+                var poseSharpness = GetPoseSharpness(visualBone, body);
                 bone.localRotation = Quaternion.Slerp(
                     bone.localRotation,
                     desiredLocal,
-                    1f - Mathf.Exp(-poseSharpness * multiplier * Time.deltaTime));
+                    1f - Mathf.Exp(-poseSharpness * multiplier * deltaTime));
             }
+
+            if (physicsPass)
+            {
+                SyncKinematicBodiesToCurrentPose();
+            }
+        }
+
+        private static float GetPoseSharpness(HumanBodyBones bone, PlayerBodyTuning body)
+        {
+            if (bone == HumanBodyBones.Head || bone == HumanBodyBones.Neck)
+            {
+                return body.headPoseSharpness;
+            }
+
+            if (bone == HumanBodyBones.Spine || bone == HumanBodyBones.Chest || bone == HumanBodyBones.UpperChest)
+            {
+                return body.spinePoseSharpness;
+            }
+
+            if (bone == HumanBodyBones.LeftUpperArm || bone == HumanBodyBones.RightUpperArm ||
+                bone == HumanBodyBones.LeftLowerArm || bone == HumanBodyBones.RightLowerArm ||
+                bone == HumanBodyBones.LeftHand || bone == HumanBodyBones.RightHand)
+            {
+                return body.armPoseSharpness;
+            }
+
+            if (bone == HumanBodyBones.LeftUpperLeg || bone == HumanBodyBones.RightUpperLeg ||
+                bone == HumanBodyBones.LeftLowerLeg || bone == HumanBodyBones.RightLowerLeg ||
+                bone == HumanBodyBones.LeftFoot || bone == HumanBodyBones.RightFoot)
+            {
+                return body.legPoseSharpness;
+            }
+
+            return Mathf.Max(body.spinePoseSharpness, body.legPoseSharpness);
+        }
+
+        private void SnapSupportedPose(in PlayerPoseContext context)
+        {
+            var balance = GameRuntime.Balance;
+            if (balance == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < VisualBones.Length; i++)
+            {
+                var visualBone = VisualBones[i];
+                if (!baseLocalRotations.TryGetValue(visualBone, out var baseRotation))
+                {
+                    continue;
+                }
+
+                var bone = animator.GetBoneTransform(visualBone);
+                if (bone == null)
+                {
+                    continue;
+                }
+
+                bone.localRotation = poseSource.GetLocalRotation(visualBone, context, baseRotation, balance);
+            }
+        }
+
+        private void RestoreBonePositions()
+        {
+            for (var i = 0; i < VisualBones.Length; i++)
+            {
+                var visualBone = VisualBones[i];
+                if (!baseLocalPositions.TryGetValue(visualBone, out var parentLocalPosition))
+                {
+                    continue;
+                }
+
+                var bone = animator.GetBoneTransform(visualBone);
+                if (bone == null)
+                {
+                    continue;
+                }
+
+                bone.localPosition = parentLocalPosition;
+            }
+        }
+
+        private void SyncRigidbodiesToCurrentPose()
+        {
+            foreach (var pair in rigidBodies)
+            {
+                var body = pair.Value;
+                var bone = GetBoneTransform(pair.Key);
+                if (body == null || bone == null)
+                {
+                    continue;
+                }
+
+                body.position = bone.position;
+                body.rotation = bone.rotation;
+                if (!body.isKinematic)
+                {
+                    body.linearVelocity = Vector3.zero;
+                    body.angularVelocity = Vector3.zero;
+                }
+
+                body.Sleep();
+            }
+
+            UnityEngine.Physics.SyncTransforms();
+        }
+
+        private void SyncKinematicBodiesToCurrentPose()
+        {
+            foreach (var pair in rigidBodies)
+            {
+                var body = pair.Value;
+                var bone = GetBoneTransform(pair.Key);
+                if (body == null || bone == null || !body.isKinematic)
+                {
+                    continue;
+                }
+
+                body.position = bone.position;
+                body.rotation = bone.rotation;
+            }
+
+            UnityEngine.Physics.SyncTransforms();
+        }
+
+        private void ApplySupportedDynamicLimbState(in PlayerPoseContext context)
+        {
+            var body = GameRuntime.Balance.playerBody;
+            for (var i = 0; i < BoneConfigs.Length; i++)
+            {
+                var boneType = BoneConfigs[i].bone;
+                if (!IsSupportedDynamicBone(boneType) || !rigidBodies.TryGetValue(boneType, out var rigidbody) || rigidbody == null || rigidbody.isKinematic)
+                {
+                    continue;
+                }
+
+                if (!baseLocalRotations.TryGetValue(boneType, out var baseRotation))
+                {
+                    continue;
+                }
+
+                var bone = animator.GetBoneTransform(boneType);
+                if (bone == null)
+                {
+                    continue;
+                }
+
+                var desiredLocal = poseSource.GetLocalRotation(boneType, context, baseRotation, GameRuntime.Balance);
+                var targetWorldRotation = bone.parent != null
+                    ? bone.parent.rotation * desiredLocal
+                    : transform.rotation * desiredLocal;
+                var spring = IsArmRootBone(boneType) ? body.supportedUpperArmSpring : body.supportedLowerArmSpring;
+                var damping = IsArmRootBone(boneType) ? body.supportedUpperArmDamping : body.supportedLowerArmDamping;
+                ApplyRotationDrive(rigidbody, targetWorldRotation, spring, damping);
+            }
+        }
+
+        private static void ApplyRotationDrive(Rigidbody rigidbody, Quaternion targetRotation, float spring, float damping)
+        {
+            var delta = targetRotation * Quaternion.Inverse(rigidbody.rotation);
+            delta.ToAngleAxis(out var angle, out var axis);
+            if (float.IsNaN(axis.x) || axis == Vector3.zero)
+            {
+                return;
+            }
+
+            if (angle > 180f)
+            {
+                angle -= 360f;
+            }
+
+            var torque = axis.normalized * (angle * Mathf.Deg2Rad * spring) - rigidbody.angularVelocity * damping;
+            rigidbody.AddTorque(torque, ForceMode.Acceleration);
         }
 
         private void ApplyLimpState()
@@ -292,20 +822,35 @@ namespace GroceryQuotaHorror.Player
                 return;
             }
 
-            foreach (var body in rigidBodies.Values)
+            var enableAllPhysics = state == BodyDriveState.Limp;
+            foreach (var pair in rigidBodies)
             {
+                var body = pair.Value;
                 if (body == null)
                 {
                     continue;
                 }
 
-                body.isKinematic = state != BodyDriveState.Limp;
-                body.useGravity = state == BodyDriveState.Limp;
-                body.detectCollisions = true;
-                if (state == BodyDriveState.Limp)
+                var enablePhysics = enableAllPhysics || ShouldKeepBoneDynamicInSupportedState(pair.Key);
+                var keepCollisionShape = enableAllPhysics;
+                if (!enablePhysics)
+                {
+                    if (!body.isKinematic)
+                    {
+                        body.linearVelocity = Vector3.zero;
+                        body.angularVelocity = Vector3.zero;
+                    }
+                }
+
+                body.isKinematic = !enablePhysics;
+                body.useGravity = enablePhysics;
+                body.detectCollisions = keepCollisionShape;
+
+                if (enablePhysics)
                 {
                     body.linearDamping = 0.08f;
                     body.angularDamping = 0.04f;
+                    body.WakeUp();
                 }
                 else if (state == BodyDriveState.Downed)
                 {
@@ -319,10 +864,79 @@ namespace GroceryQuotaHorror.Player
                 }
             }
 
+            for (var i = 0; i < ragdollColliders.Count; i++)
+            {
+                if (ragdollColliders[i] != null)
+                {
+                    ragdollColliders[i].enabled = enableAllPhysics;
+                }
+            }
+
             if (animator != null)
             {
                 animator.enabled = false;
             }
+        }
+
+        private bool ShouldLetPhysicsDriveBone(HumanBodyBones bone)
+        {
+            return state != BodyDriveState.Limp &&
+                   ShouldKeepBoneDynamicInSupportedState(bone) &&
+                   rigidBodies.TryGetValue(bone, out var body) &&
+                   body != null &&
+                   !body.isKinematic;
+        }
+
+        private static bool ShouldKeepBoneDynamicInSupportedState(HumanBodyBones bone)
+        {
+            return IsSupportedDynamicBone(bone);
+        }
+
+        private HumanBodyBones? GetBoneForRigidbody(Rigidbody rigidbody)
+        {
+            if (rigidbody == null)
+            {
+                return null;
+            }
+
+            foreach (var pair in rigidBodies)
+            {
+                if (pair.Value == rigidbody)
+                {
+                    return pair.Key;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool IsArmRootBone(HumanBodyBones bone)
+        {
+            return bone == HumanBodyBones.LeftShoulder ||
+                   bone == HumanBodyBones.RightShoulder ||
+                   bone == HumanBodyBones.LeftUpperArm ||
+                   bone == HumanBodyBones.RightUpperArm;
+        }
+
+        private static bool IsSupportedDynamicBone(HumanBodyBones bone)
+        {
+            return bone == HumanBodyBones.LeftUpperArm ||
+                   bone == HumanBodyBones.LeftLowerArm ||
+                   bone == HumanBodyBones.LeftHand ||
+                   bone == HumanBodyBones.RightUpperArm ||
+                   bone == HumanBodyBones.RightLowerArm ||
+                   bone == HumanBodyBones.RightHand;
+        }
+
+        private static bool IsSupportedCollisionBone(HumanBodyBones bone)
+        {
+            return IsSupportedDynamicBone(bone) ||
+                   bone == HumanBodyBones.Hips ||
+                   bone == HumanBodyBones.Spine ||
+                   bone == HumanBodyBones.Chest ||
+                   bone == HumanBodyBones.Head ||
+                   bone == HumanBodyBones.LeftUpperLeg ||
+                   bone == HumanBodyBones.RightUpperLeg;
         }
 
         private bool BuildRagdoll()
@@ -372,6 +986,9 @@ namespace GroceryQuotaHorror.Player
             body.mass = config.mass;
             body.interpolation = RigidbodyInterpolation.Interpolate;
             body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+            body.solverIterations = 12;
+            body.solverVelocityIterations = 4;
+            body.maxAngularVelocity = 80f;
 
             CreateCollider(bone, config);
             rigidBodies[config.bone] = body;
@@ -400,12 +1017,17 @@ namespace GroceryQuotaHorror.Player
 
             joint.connectedBody = connectedBody;
             joint.autoConfigureConnectedAnchor = true;
+            joint.enablePreprocessing = false;
             joint.enableProjection = true;
             joint.swingAxis = Vector3.forward;
             joint.lowTwistLimit = BuildSoftLimit(-jointTwistLimit);
             joint.highTwistLimit = BuildSoftLimit(jointTwistLimit);
             joint.swing1Limit = BuildSoftLimit(jointSwingLimit);
             joint.swing2Limit = BuildSoftLimit(jointSwingLimit);
+            if (!ragdollJoints.Contains(joint))
+            {
+                ragdollJoints.Add(joint);
+            }
         }
 
         private void CreateCollider(Transform bone, BoneConfig config)
@@ -460,16 +1082,26 @@ namespace GroceryQuotaHorror.Player
 
         private void IgnoreRootCollisions()
         {
-            if (rootController == null)
+            if (rootColliders == null || rootColliders.Length == 0)
             {
                 return;
             }
 
             for (var i = 0; i < ragdollColliders.Count; i++)
             {
-                if (ragdollColliders[i] != null)
+                var ragdollCollider = ragdollColliders[i];
+                if (ragdollCollider == null)
                 {
-                    UnityEngine.Physics.IgnoreCollision(rootController, ragdollColliders[i], true);
+                    continue;
+                }
+
+                for (var rootIndex = 0; rootIndex < rootColliders.Length; rootIndex++)
+                {
+                    var rootCollider = rootColliders[rootIndex];
+                    if (rootCollider != null && rootCollider != ragdollCollider)
+                    {
+                        UnityEngine.Physics.IgnoreCollision(rootCollider, ragdollCollider, true);
+                    }
                 }
             }
         }

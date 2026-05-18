@@ -40,6 +40,12 @@ Your friend can contribute without touching gameplay code.
 - Commit prefab and scene changes together when changing layout data.
 - Use short-lived branches for features or chunk work, then merge back into `main`.
 
+## Debugging Workflow
+
+- Avoid silent fallbacks in tricky runtime systems when clear debug output would identify the real failure.
+- Prefer explicit, one-shot or state-change logs that explain why a path was blocked, what live values were used, and what decision was made.
+- Do not spam logs every frame; collect cohesive debug breadcrumbs around the event being tested so console output stays readable.
+
 ## Current Vertical Slice
 
 - Procedural supermarket layout from modular chunk prefabs
@@ -48,4 +54,3 @@ Your friend can contribute without touching gameplay code.
 - Relay session wrapper with local fallback
 - Three simple monster archetypes
 - Down, revive, flashlight, hide, sprint, and door interaction
-

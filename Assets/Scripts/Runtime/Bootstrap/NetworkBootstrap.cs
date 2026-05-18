@@ -317,6 +317,12 @@ namespace GroceryQuotaHorror.Bootstrap
                 ? new Vector3(0f, OfflinePlayerSpawnHeight, 205f)
                 : new Vector3(0f, OfflinePlayerSpawnHeight, -6f);
             var playerInstance = Instantiate(playerPrefab, spawnPosition, Quaternion.identity);
+            var networkTransform = playerInstance.GetComponent<Unity.Netcode.Components.NetworkTransform>();
+            if (LocalOfflineMode && networkTransform != null)
+            {
+                networkTransform.enabled = false;
+            }
+
             Debug.Log($"[OfflineSpawn] Spawned player prefab '{playerPrefab.name}' in scene '{sceneName}' from {source} at {spawnPosition}. Root world position: {playerInstance.transform.position}");
 
             var cameras = playerInstance.GetComponentsInChildren<Camera>(true);

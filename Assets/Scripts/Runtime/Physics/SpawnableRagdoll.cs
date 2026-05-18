@@ -149,6 +149,67 @@ namespace GroceryQuotaHorror.Physics
             return rigidBodies.TryGetValue(bone, out var body) ? body : null;
         }
 
+        public bool TryGetClosestRigidbody(Vector3 worldPoint, out Rigidbody closestBody)
+        {
+            closestBody = null;
+            var closestDistance = float.MaxValue;
+            foreach (var body in rigidBodies.Values)
+            {
+                if (body == null || body.isKinematic)
+                {
+                    continue;
+                }
+
+                var distance = (body.worldCenterOfMass - worldPoint).sqrMagnitude;
+                if (distance >= closestDistance)
+                {
+                    continue;
+                }
+
+                closestDistance = distance;
+                closestBody = body;
+            }
+
+            if (closestBody != null)
+            {
+                return true;
+            }
+
+            foreach (var body in rigidBodies.Values)
+            {
+                if (body == null)
+                {
+                    continue;
+                }
+
+                var distance = (body.worldCenterOfMass - worldPoint).sqrMagnitude;
+                if (distance >= closestDistance)
+                {
+                    continue;
+                }
+
+                closestDistance = distance;
+                closestBody = body;
+            }
+
+            return closestBody != null;
+        }
+
+        public void ApplyWholeBodyVelocity(Vector3 linearVelocity, Vector3 angularVelocity, Vector3 impulse)
+        {
+            foreach (var body in rigidBodies.Values)
+            {
+                if (body == null || body.isKinematic)
+                {
+                    continue;
+                }
+
+                body.linearVelocity = linearVelocity;
+                body.angularVelocity = angularVelocity;
+                body.AddForce(impulse, ForceMode.Impulse);
+            }
+        }
+
         private void BuildRagdoll()
         {
             foreach (var config in BoneConfigs)

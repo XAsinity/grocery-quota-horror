@@ -11,6 +11,7 @@ namespace GroceryQuotaHorror.Player
             float speed01,
             bool sprinting,
             bool grounded,
+            float lookYaw,
             float lookPitch,
             float recentImpact,
             float recovery01)
@@ -20,6 +21,7 @@ namespace GroceryQuotaHorror.Player
             Speed01 = speed01;
             Sprinting = sprinting;
             Grounded = grounded;
+            LookYaw = lookYaw;
             LookPitch = lookPitch;
             RecentImpact = recentImpact;
             Recovery01 = recovery01;
@@ -30,6 +32,7 @@ namespace GroceryQuotaHorror.Player
         public float Speed01 { get; }
         public bool Sprinting { get; }
         public bool Grounded { get; }
+        public float LookYaw { get; }
         public float LookPitch { get; }
         public float RecentImpact { get; }
         public float Recovery01 { get; }

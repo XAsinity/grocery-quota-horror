@@ -60,14 +60,30 @@ namespace GroceryQuotaHorror.Data
         public float mouseTurnRate = 120f;
         public float cameraHeight = 1.55f;
         public float movementSmoothing = 10f;
+        public float airControlMultiplier = 0.45f;
+        public float groundStickForce = 14f;
+        public float groundedMaxFallSpeed = -6f;
+        public float groundVelocityFollow = 0.82f;
+        public float jumpVelocity = 6.4f;
+        public float jumpCooldown = 0.18f;
+        public float jumpBufferSeconds = 0.12f;
+        public float landingCompression = 1f;
+        public float landingRecoverySpeed = 7f;
     }
 
     [Serializable]
     public sealed class PlayerCameraTuning
     {
         public Vector3 supportedLocalOffset = new(0f, 1.55f, 0f);
+        public Vector3 supportedHeadLocalOffset = new(0f, 0.03f, 0.06f);
+        public float supportedHeadPositionWeight = 0.72f;
+        public float supportedHeadRotationWeight = 0.42f;
+        public float supportedFollowPositionSharpness = 18f;
+        public float supportedFollowRotationSharpness = 16f;
+        public float supportedSnapDistance = 0.35f;
         public float limpFollowPositionSharpness = 10f;
         public float limpFollowRotationSharpness = 8f;
+        public float limpSnapDistance = 0.65f;
         public float recoveryBlendSeconds = 0.22f;
     }
 
@@ -89,8 +105,25 @@ namespace GroceryQuotaHorror.Data
         public float supportedBobFrequency = 5.5f;
         public float supportedMoveLean = 10f;
         public float sprintLeanBonus = 6f;
+        public float supportedLookYawDegrees = 28f;
+        public float supportedLookYawReturnSharpness = 7f;
+        public float spinePoseSharpness = 10f;
+        public float headPoseSharpness = 14f;
+        public float armPoseSharpness = 4f;
+        public float legPoseSharpness = 11f;
+        public float supportedUpperArmSpring = 18f;
+        public float supportedUpperArmDamping = 3.6f;
+        public float supportedLowerArmSpring = 8f;
+        public float supportedLowerArmDamping = 2f;
         public float headPitchWeight = 0.5f;
+        public float headYawWeight = 0.85f;
         public float chestPitchWeight = 0.18f;
+        public float chestYawWeight = 0.35f;
+        public float shoulderYawWeight = 0.18f;
+        public float shoulderRollDegrees = 12f;
+        public float armHangDegrees = 18f;
+        public float armLowerBendDegrees = 16f;
+        public float handRelaxDegrees = 8f;
         public float armSwingDegrees = 16f;
         public float legStrideDegrees = 18f;
         public float armDragDegrees = 6f;
@@ -107,7 +140,6 @@ namespace GroceryQuotaHorror.Data
         public float jointTwistLimit = 20f;
         public float headLookTorque = 2.4f;
         public float headLiftForce = 0.65f;
-        public float restoreHeightOffset = 0.15f;
         public float recoveryAssistForce = 24f;
         public float ragdollHoldForce = 90f;
         public float ragdollHoldDamping = 2.5f;
@@ -120,7 +152,7 @@ namespace GroceryQuotaHorror.Data
     [Serializable]
     public sealed class InteractionTuning
     {
-        public float interactRange = 3.2f;
+        public float interactRange = 4.5f;
         public float hideOffset = 0.5f;
         public float heldItemForwardOffset = 1.1f;
         public float heldItemUpOffset = 1.1f;

@@ -45,14 +45,17 @@ namespace GroceryQuotaHorror.Editor
             var networkObject = EnsureComponent<NetworkObject>(root);
             var networkTransform = EnsureComponent<Unity.Netcode.Components.NetworkTransform>(root);
             var player = EnsureComponent<PlayerController>(root);
+            var looseBody = EnsureComponent<PlayerLooseBodyController>(root);
             var activeRagdoll = EnsureComponent<ActiveRagdollController>(root);
+            var rootBody = EnsureComponent<Rigidbody>(root);
             _ = networkObject;
             _ = networkTransform;
 
             controller = root.GetComponent<CharacterController>();
             player = root.GetComponent<PlayerController>();
+            looseBody = root.GetComponent<PlayerLooseBodyController>();
             activeRagdoll = root.GetComponent<ActiveRagdollController>();
-            if (controller == null || player == null || activeRagdoll == null)
+            if (controller == null || player == null || looseBody == null || activeRagdoll == null)
             {
                 Debug.LogError("Failed to build Player prefab because required components were not added to the root object.");
                 Object.DestroyImmediate(root);
@@ -82,7 +85,9 @@ namespace GroceryQuotaHorror.Editor
 
             ConfigureCamera(sourceRoot, root);
             ConfigureCharacterController(modelInstance != null ? modelInstance.transform : visualRoot.transform, controller);
-            ConfigurePlayerFields(modelInstance != null ? modelInstance.transform : visualRoot.transform, player, activeRagdoll);
+            ConfigureRigidbody(rootBody);
+            activeRagdoll.enabled = false;
+            ConfigurePlayerFields(modelInstance != null ? modelInstance.transform : visualRoot.transform, player, looseBody, activeRagdoll);
 
             PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefabPath);
             Object.DestroyImmediate(root);
@@ -129,20 +134,30 @@ namespace GroceryQuotaHorror.Editor
                 return;
             }
 
-            controller.height = Mathf.Max(1.5f, bounds.size.y * 0.92f);
+            controller.height = Mathf.Max(1.5f, bounds.size.y);
             controller.radius = Mathf.Clamp(Mathf.Max(bounds.extents.x, bounds.extents.z) * 0.38f, 0.22f, 0.45f);
-            var localCenter = root.InverseTransformPoint(new Vector3(bounds.center.x, bounds.min.y + controller.height * 0.5f, bounds.center.z));
-            controller.center = new Vector3(localCenter.x, localCenter.y, localCenter.z);
+            var localCenter = root.InverseTransformPoint(bounds.center);
+            controller.center = new Vector3(localCenter.x, Mathf.Max(controller.height * 0.5f, controller.radius), localCenter.z);
             controller.stepOffset = 0.3f;
             controller.skinWidth = 0.08f;
             controller.minMoveDistance = 0.001f;
         }
 
-        private static void ConfigurePlayerFields(Transform modelRoot, PlayerController player, ActiveRagdollController activeRagdoll)
+        private static void ConfigureRigidbody(Rigidbody body)
+        {
+            body.mass = 70f;
+            body.useGravity = false;
+            body.interpolation = RigidbodyInterpolation.Interpolate;
+            body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+            body.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
+        }
+
+        private static void ConfigurePlayerFields(Transform modelRoot, PlayerController player, PlayerLooseBodyController looseBody, ActiveRagdollController activeRagdoll)
         {
             var serializedPlayer = new SerializedObject(player);
             serializedPlayer.FindProperty("flashlight").objectReferenceValue = null;
             serializedPlayer.FindProperty("activeRagdoll").objectReferenceValue = activeRagdoll;
+            serializedPlayer.FindProperty("looseBody").objectReferenceValue = looseBody;
 
             var renderers = modelRoot.GetComponentsInChildren<Renderer>(true);
             var rendererProperty = serializedPlayer.FindProperty("bodyRenderers");
@@ -159,6 +174,10 @@ namespace GroceryQuotaHorror.Editor
             }
 
             serializedPlayer.ApplyModifiedPropertiesWithoutUndo();
+
+            var serializedLooseBody = new SerializedObject(looseBody);
+            serializedLooseBody.FindProperty("modelRoot").objectReferenceValue = modelRoot;
+            serializedLooseBody.ApplyModifiedPropertiesWithoutUndo();
 
             var serializedRagdoll = new SerializedObject(activeRagdoll);
             serializedRagdoll.FindProperty("modelRoot").objectReferenceValue = modelRoot;
