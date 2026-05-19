@@ -12,8 +12,6 @@ namespace GroceryQuotaHorror.Editor
         private const string ResourcesRoot = "Assets/Resources";
         private const string BalanceFolder = "Assets/Resources/BalanceProfiles";
         private const string PrototypeProfilePath = "Assets/Resources/BalanceProfiles/Prototype.asset";
-        private const string NightProfilePath = "Assets/Resources/BalanceProfiles/Night.asset";
-        private const string StressProfilePath = "Assets/Resources/BalanceProfiles/StressTest.asset";
         private const string ContentDatabasePath = "Assets/Resources/GameContentDatabase.asset";
 
         static GameDataBootstrap()
@@ -67,18 +65,6 @@ namespace GroceryQuotaHorror.Editor
             var content = LoadOrCreate<GameContentDatabase>(ContentDatabasePath);
             PopulateContentDatabase(content);
             EnsureProfile(PrototypeProfilePath, profile => { });
-            EnsureProfile(NightProfilePath, profile =>
-            {
-                profile.objectives.nightLengthSeconds = 520f;
-                profile.spawn.monsterBudget = 4;
-            });
-            EnsureProfile(StressProfilePath, profile =>
-            {
-                profile.playerMovement.moveSpeed = 6f;
-                profile.playerBody.pelvisFollowForce = 160f;
-                profile.ragdoll.ragdollHoldForce = 140f;
-                profile.spawn.monsterBudget = 5;
-            });
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
         }

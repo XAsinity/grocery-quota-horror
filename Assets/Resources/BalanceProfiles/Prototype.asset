@@ -34,7 +34,7 @@ MonoBehaviour:
     landingRecoverySpeed: 7
   playerCamera:
     supportedLocalOffset: {x: 0, y: 1.55, z: 0}
-    supportedHeadLocalOffset: {x: 0, y: 0.03, z: 0.06}
+    supportedHeadLocalOffset: {x: 0, y: 0.05, z: 0.18}
     supportedHeadPositionWeight: 0.72
     supportedHeadRotationWeight: 0.34
     supportedFollowPositionSharpness: 30
@@ -44,6 +44,10 @@ MonoBehaviour:
     limpFollowRotationSharpness: 8
     limpSnapDistance: 0.55
     recoveryBlendSeconds: 0.22
+    firstPersonLookUpLimit: 72
+    firstPersonLookDownLimit: 58
+    supportedCameraFieldOfView: 64
+    supportedCameraNearClip: 0.08
   playerBody:
     pelvisFollowForce: 260
     pelvisDamping: 24
@@ -60,7 +64,7 @@ MonoBehaviour:
     supportedBobFrequency: 5.5
     supportedMoveLean: 5
     sprintLeanBonus: 2.5
-    supportedLookYawDegrees: 42
+    supportedLookYawDegrees: 147
     supportedLookYawReturnSharpness: 6.5
     spinePoseSharpness: 9
     headPoseSharpness: 11
@@ -92,12 +96,75 @@ MonoBehaviour:
     headLookTorque: 2.4
     headLiftForce: 0.65
     recoveryAssistForce: 24
-    ragdollHoldForce: 90
-    ragdollHoldDamping: 2.5
-    ragdollHeldLinearDamping: 0.4
-    ragdollHeldAngularDamping: 0.45
-    ragdollHeldVerticalAssist: 0.7
-    ragdollHeldMaxForce: 140
+    ragdollHoldForce: 180
+    ragdollHoldDamping: 4.5
+    ragdollHeldLinearDamping: 0.25
+    ragdollHeldAngularDamping: 0.35
+    ragdollHeldVerticalAssist: 0.9
+    ragdollHeldMaxForce: 360
+    impactWorldCollisionEnabled: 1
+    impactMinimumSourceMass: 0.05
+    impactVelocityThreshold: 7.5
+    impactVelocityTransfer: 0.18
+    impactMaxTransferredSpeed: 12
+    impactImpulseMultiplier: 0.42
+    impactMaxImpulse: 13
+    impactMassReference: 70
+    impactWholeBodyVelocityShare: 0.3
+    impactContactPadding: 0.12
+    impactLowHitImpulseMultiplier: 1.8
+    impactLowHitVelocityShare: 0.08
+    impactForcePointRadius: 0.55
+    impactNearbyImpulseShare: 0.18
+    impactNearbyImpulseRadius: 1.15
+    impactAutoRecoveryDelay: 2
+    impactCooldown: 0.6
+    impactFallRagdollEnabled: 1
+    impactFallVelocityThreshold: 10
+    impactFallEffectiveMass: 70
+    impactFallVelocityMultiplier: 1
+    impactRecoveryMinDelay: 1.25
+    impactRecoveryMaxDelay: 5.5
+    impactRecoverySeverityReferenceSpeed: 18
+    impactRecoverySeverityMassReference: 70
+    impactRecoveryStableHoldSeconds: 0.45
+    impactRecoveryMaxAverageSpeed: 0.45
+    impactRecoveryMaxBodySpeed: 1.2
+    impactRecoveryMaxAngularSpeed: 1.2
+    impactRecoveryMaxComDriftSpeed: 0.35
+    impactRecoveryGroundProbeDistance: 2.5
+    impactKnockoutSeverityThreshold: 0.82
+    impactKnockoutAccumulationEnabled: 1
+    impactKnockoutAccumulationGain: 1
+    impactKnockoutAccumulationMax: 1
+    impactVignetteMinAlpha: 0.15
+    impactVignetteMaxAlpha: 0.72
+    impactBlackoutAlpha: 1
+    impactBlackoutMinSeconds: 0.75
+    impactBlackoutMaxSeconds: 2.25
+    impactOverlayFadeOutSeconds: 1.25
+  hazards:
+    overrideImpactVelocityThreshold: 7.5
+    impactSourceCooldown: 0.25
+    impactVelocityScale: 1
+    hammerLocalHingeAnchor: {x: 0, y: 0.72, z: 0}
+    autoAnchorHammerToTop: 1
+    hammerContinuousSpin: 1
+    hammerSwingLimitDegrees: 68
+    hammerMotorSpeed: 175
+    hammerMotorForce: 12000
+    hammerMass: 240
+    hammerMaxAngularVelocity: 50
+    fallbackHammerScale: {x: 1.4, y: 1.4, z: 1.4}
+    ballInitialDelay: 0.75
+    ballFireInterval: 2.2
+    ballSpeed: 16
+    ballMass: 2
+    ballScale: 0.42
+    ballLifetime: 6
+    testHammerPosition: {x: -3.8, y: 2.4, z: 205}
+    testBallShooterPosition: {x: 5.5, y: 1.15, z: 201.5}
+    testBallShooterTarget: {x: 0, y: 1.15, z: 205}
   interaction:
     interactRange: 4.5
     hideOffset: 0.5
@@ -116,6 +183,10 @@ MonoBehaviour:
     patrolSpeedMultiplier: 0.55
     turnSmoothing: 0.12
     patrolArrivalDistance: 1.2
+    prototypeThrowSpeed: 42
+    prototypeThrowUpwardVelocity: 14
+    prototypeThrowImpulse: 85
+    prototypeThrowSeverity: 1
   objectives:
     minQuotaValue: 12
     maxQuotaValue: 20

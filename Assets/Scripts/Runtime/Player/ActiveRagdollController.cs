@@ -13,6 +13,24 @@ namespace GroceryQuotaHorror.Player
         Side
     }
 
+    public readonly struct RagdollMotionStats
+    {
+        public RagdollMotionStats(Vector3 centerOfMass, float averageLinearSpeed, float maxLinearSpeed, float averageAngularSpeed, float centerOfMassDriftSpeed)
+        {
+            CenterOfMass = centerOfMass;
+            AverageLinearSpeed = averageLinearSpeed;
+            MaxLinearSpeed = maxLinearSpeed;
+            AverageAngularSpeed = averageAngularSpeed;
+            CenterOfMassDriftSpeed = centerOfMassDriftSpeed;
+        }
+
+        public Vector3 CenterOfMass { get; }
+        public float AverageLinearSpeed { get; }
+        public float MaxLinearSpeed { get; }
+        public float AverageAngularSpeed { get; }
+        public float CenterOfMassDriftSpeed { get; }
+    }
+
     [DefaultExecutionOrder(-100)]
     public sealed class ActiveRagdollController : MonoBehaviour
     {
@@ -103,6 +121,9 @@ namespace GroceryQuotaHorror.Player
         private float cachedLookPitch;
         private Vector3 hipsAnchorLocalPosition;
         private PlayerPoseContext lastSupportedContext;
+        private Vector3 lastMotionStatsCenterOfMass;
+        private float lastMotionStatsTime;
+        private bool hasLastMotionStats;
 
         public BodyDriveState State => state;
         public bool IsAvailable => ragdollBuilt;
@@ -152,6 +173,7 @@ namespace GroceryQuotaHorror.Player
             }
 
             IgnoreRootCollisions();
+            IgnoreRagdollSelfCollisions();
             SetState(BodyDriveState.Supported, true);
             lastRootPosition = transform.position;
             return ragdollBuilt;
@@ -201,6 +223,7 @@ namespace GroceryQuotaHorror.Player
             if (nextState == BodyDriveState.Limp)
             {
                 SyncRigidbodiesToCurrentPose();
+                hasLastMotionStats = false;
             }
 
             state = nextState;
@@ -272,9 +295,132 @@ namespace GroceryQuotaHorror.Player
             }
         }
 
+        public void ApplyLimpImpact(Vector3 wholeBodyVelocity, Vector3 angularVelocity, Vector3 impulse, Vector3 worldPoint)
+        {
+            if (!ragdollBuilt || state != BodyDriveState.Limp)
+            {
+                return;
+            }
+
+            foreach (var body in rigidBodies.Values)
+            {
+                if (body == null || body.isKinematic)
+                {
+                    continue;
+                }
+
+                body.linearVelocity = wholeBodyVelocity;
+                body.angularVelocity = angularVelocity;
+                body.WakeUp();
+            }
+
+            AddLimpImpulseAtPoint(impulse, worldPoint);
+        }
+
+        public void AddLimpImpulse(Vector3 impulse)
+        {
+            if (!ragdollBuilt || state != BodyDriveState.Limp || impulse.sqrMagnitude < 0.0001f)
+            {
+                return;
+            }
+
+            foreach (var body in rigidBodies.Values)
+            {
+                if (body == null || body.isKinematic)
+                {
+                    continue;
+                }
+
+                body.AddForce(impulse, ForceMode.Impulse);
+                body.WakeUp();
+            }
+        }
+
+        public void AddLimpImpulseAtPoint(Vector3 impulse, Vector3 worldPoint)
+        {
+            if (!ragdollBuilt || state != BodyDriveState.Limp || impulse.sqrMagnitude < 0.0001f)
+            {
+                return;
+            }
+
+            if (!TryGetClosestRigidbody(worldPoint, out var targetBody) || targetBody == null || targetBody.isKinematic)
+            {
+                AddLimpImpulse(impulse);
+                return;
+            }
+
+            var ragdoll = GameRuntime.Balance != null ? GameRuntime.Balance.ragdoll : null;
+            var forcePointRadius = ragdoll != null ? ragdoll.impactForcePointRadius : 0.55f;
+            var nearbyShare = ragdoll != null ? ragdoll.impactNearbyImpulseShare : 0.18f;
+            var nearbyRadius = ragdoll != null ? ragdoll.impactNearbyImpulseRadius : 1.15f;
+            var forcePoint = targetBody.position + Vector3.ClampMagnitude(worldPoint - targetBody.position, forcePointRadius);
+            targetBody.AddForceAtPosition(impulse, forcePoint, ForceMode.Impulse);
+            targetBody.WakeUp();
+
+            var sharedImpulse = impulse * nearbyShare;
+            foreach (var body in rigidBodies.Values)
+            {
+                if (body == null || body == targetBody || body.isKinematic)
+                {
+                    continue;
+                }
+
+                var distance = Vector3.Distance(body.worldCenterOfMass, worldPoint);
+                var falloff = Mathf.Clamp01(1f - distance / Mathf.Max(0.01f, nearbyRadius));
+                if (falloff <= 0f)
+                {
+                    continue;
+                }
+
+                body.AddForce(sharedImpulse * falloff, ForceMode.Impulse);
+                body.WakeUp();
+            }
+        }
+
         public Rigidbody GetBoneRigidbody(HumanBodyBones bone)
         {
             return rigidBodies.TryGetValue(bone, out var body) ? body : null;
+        }
+
+        public bool TryGetClosestRigidbody(Vector3 worldPoint, out Rigidbody closestBody)
+        {
+            closestBody = null;
+            var bestDistance = float.MaxValue;
+            foreach (var body in rigidBodies.Values)
+            {
+                if (body == null)
+                {
+                    continue;
+                }
+
+                var closestPoint = body.worldCenterOfMass;
+                var colliders = body.GetComponents<Collider>();
+                for (var i = 0; i < colliders.Length; i++)
+                {
+                    var collider = colliders[i];
+                    if (collider == null || !collider.enabled)
+                    {
+                        continue;
+                    }
+
+                    var colliderPoint = collider.ClosestPoint(worldPoint);
+                    if ((colliderPoint - worldPoint).sqrMagnitude < (closestPoint - worldPoint).sqrMagnitude)
+                    {
+                        closestPoint = colliderPoint;
+                    }
+                }
+
+                var distance = (closestPoint - worldPoint).sqrMagnitude;
+                if (distance >= bestDistance)
+                {
+                    continue;
+                }
+
+                bestDistance = distance;
+                closestBody = body;
+            }
+
+            return closestBody != null;
         }
 
         public bool TryGetCurrentRagdollCenterOfMass(out Vector3 centerOfMass)
@@ -300,6 +446,74 @@ namespace GroceryQuotaHorror.Player
 
             centerOfMass /= totalMass;
             return true;
+        }
+
+        public bool TryGetRagdollMotionStats(out RagdollMotionStats stats)
+        {
+            stats = default;
+            var centerOfMass = Vector3.zero;
+            var totalMass = 0f;
+            var stabilityLinearSpeed = 0f;
+            var stabilityMaxLinearSpeed = 0f;
+            var stabilityAngularSpeed = 0f;
+            var stabilityBodies = 0;
+            foreach (var pair in rigidBodies)
+            {
+                var body = pair.Value;
+                if (body == null || body.isKinematic)
+                {
+                    continue;
+                }
+
+                var mass = Mathf.Max(0.01f, body.mass);
+                centerOfMass += body.worldCenterOfMass * mass;
+                totalMass += mass;
+
+                if (!IsRecoveryStabilityBone(pair.Key))
+                {
+                    continue;
+                }
+
+                var currentLinearSpeed = body.linearVelocity.magnitude;
+                stabilityLinearSpeed += currentLinearSpeed;
+                stabilityMaxLinearSpeed = Mathf.Max(stabilityMaxLinearSpeed, currentLinearSpeed);
+                stabilityAngularSpeed += body.angularVelocity.magnitude;
+                stabilityBodies++;
+            }
+
+            if (stabilityBodies <= 0 || totalMass <= 0f)
+            {
+                return false;
+            }
+
+            centerOfMass /= totalMass;
+            var now = Time.time;
+            var driftSpeed = 0f;
+            if (hasLastMotionStats)
+            {
+                driftSpeed = Vector3.Distance(centerOfMass, lastMotionStatsCenterOfMass) / Mathf.Max(0.0001f, now - lastMotionStatsTime);
+            }
+
+            lastMotionStatsCenterOfMass = centerOfMass;
+            lastMotionStatsTime = now;
+            hasLastMotionStats = true;
+            stats = new RagdollMotionStats(
+                centerOfMass,
+                stabilityLinearSpeed / stabilityBodies,
+                stabilityMaxLinearSpeed,
+                stabilityAngularSpeed / stabilityBodies,
+                driftSpeed);
+            return true;
+        }
+
+        private static bool IsRecoveryStabilityBone(HumanBodyBones bone)
+        {
+            return bone != HumanBodyBones.Head &&
+                   bone != HumanBodyBones.Neck &&
+                   bone != HumanBodyBones.LeftHand &&
+                   bone != HumanBodyBones.RightHand &&
+                   bone != HumanBodyBones.LeftFoot &&
+                   bone != HumanBodyBones.RightFoot;
         }
 
         public Quaternion GetCurrentRagdollYaw()
@@ -519,13 +733,7 @@ namespace GroceryQuotaHorror.Player
             if (state == BodyDriveState.Limp)
             {
                 targetPosition = head.TransformPoint(camera.supportedHeadLocalOffset);
-                var forward = Vector3.ProjectOnPlane(head.forward, Vector3.up);
-                if (forward.sqrMagnitude < 0.0001f)
-                {
-                    forward = transform.forward;
-                }
-
-                targetRotation = Quaternion.LookRotation(forward.normalized, Vector3.up);
+                targetRotation = head.rotation;
                 return true;
             }
 
@@ -1101,6 +1309,27 @@ namespace GroceryQuotaHorror.Player
                     if (rootCollider != null && rootCollider != ragdollCollider)
                     {
                         UnityEngine.Physics.IgnoreCollision(rootCollider, ragdollCollider, true);
+                    }
+                }
+            }
+        }
+
+        private void IgnoreRagdollSelfCollisions()
+        {
+            for (var i = 0; i < ragdollColliders.Count; i++)
+            {
+                var first = ragdollColliders[i];
+                if (first == null)
+                {
+                    continue;
+                }
+
+                for (var j = i + 1; j < ragdollColliders.Count; j++)
+                {
+                    var second = ragdollColliders[j];
+                    if (second != null && second != first)
+                    {
+                        UnityEngine.Physics.IgnoreCollision(first, second, true);
                     }
                 }
             }

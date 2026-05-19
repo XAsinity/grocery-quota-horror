@@ -379,7 +379,7 @@ namespace GroceryQuotaHorror.Editor
             extraction.GetComponent<Renderer>().sharedMaterial.color = new Color(0.2f, 0.8f, 0.2f);
 
             var bootstrapSo = new SerializedObject(bootstrap);
-            bootstrapSo.FindProperty("balanceProfile").objectReferenceValue = AssetDatabase.LoadAssetAtPath<GameBalanceProfile>("Assets/Resources/BalanceProfiles/Night.asset");
+            bootstrapSo.FindProperty("balanceProfile").objectReferenceValue = AssetDatabase.LoadAssetAtPath<GameBalanceProfile>("Assets/Resources/BalanceProfiles/Prototype.asset");
             bootstrapSo.FindProperty("contentDatabase").objectReferenceValue = AssetDatabase.LoadAssetAtPath<GameContentDatabase>("Assets/Resources/GameContentDatabase.asset");
             bootstrapSo.FindProperty("storeGenerator").objectReferenceValue = generator;
             bootstrapSo.FindProperty("gameManagerPrefab").objectReferenceValue = AssetDatabase.LoadAssetAtPath<NightGameManager>($"{PrefabRoot}/Managers/NightGameManager.prefab");

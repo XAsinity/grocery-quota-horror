@@ -57,8 +57,11 @@ namespace GroceryQuotaHorror.Player
         private Vector3 leftLowerArmVelocity;
         private Vector3 rightLowerArmVelocity;
         private Vector3 baseModelLocalPosition;
+        private Vector3 grabTargetPosition;
         private float strideClock;
+        private float grabReach;
         private bool relaxedMode;
+        private bool hasGrabTarget;
         private LooseBodyMode mode;
         private float recoveryStartedAt;
         private float postRagdollBlendStartedAt;
@@ -70,6 +73,7 @@ namespace GroceryQuotaHorror.Player
 
         public bool IsAvailable => animator != null && animator.isHuman;
         public bool BlocksHorizontalMovement => mode == LooseBodyMode.Limp || mode == LooseBodyMode.Recovering;
+        public bool IsLimp => mode == LooseBodyMode.Limp;
 
         public void Initialize(Transform explicitModelRoot = null)
         {
@@ -125,6 +129,33 @@ namespace GroceryQuotaHorror.Player
             ResetArmSimulation();
             baseModelLocalPosition = modelRoot.localPosition;
             EnsureCameraSocket();
+        }
+
+        public void SetGrabTarget(Vector3 worldPosition)
+        {
+            grabTargetPosition = GetGrabPoseTarget(worldPosition);
+            hasGrabTarget = true;
+        }
+
+        public void ClearGrabTarget()
+        {
+            hasGrabTarget = false;
+        }
+
+        public bool TryGetGrabAnchorPosition(out Vector3 position)
+        {
+            position = Vector3.zero;
+            if (!hasGrabTarget ||
+                !bones.TryGetValue(HumanBodyBones.LeftHand, out var leftHand) ||
+                !bones.TryGetValue(HumanBodyBones.RightHand, out var rightHand) ||
+                leftHand == null ||
+                rightHand == null)
+            {
+                return false;
+            }
+
+            position = (leftHand.position + rightHand.position) * 0.5f;
+            return true;
         }
 
         public void RestoreReferenceBonePositions()
@@ -198,7 +229,7 @@ namespace GroceryQuotaHorror.Player
             jumpPulse = 0f;
         }
 
-        public bool AttachCamera(Camera targetCamera, float pitch, GameBalanceProfile balance)
+        public bool AttachCamera(Camera targetCamera, float pitch, float yaw, GameBalanceProfile balance)
         {
             if (targetCamera == null || balance == null || !IsAvailable)
             {
@@ -212,15 +243,29 @@ namespace GroceryQuotaHorror.Player
             }
 
             cameraSocket.localPosition = balance.playerCamera.supportedHeadLocalOffset;
-            cameraSocket.localRotation = Quaternion.identity;
+            if (mode == LooseBodyMode.Limp)
+            {
+                cameraSocket.localRotation = Quaternion.identity;
+            }
+            else
+            {
+                var cameraTuning = balance.playerCamera;
+                var lookUpLimit = Mathf.Abs(cameraTuning.firstPersonLookUpLimit);
+                var lookDownLimit = Mathf.Abs(cameraTuning.firstPersonLookDownLimit);
+                var clampedPitch = Mathf.Clamp(pitch, -lookUpLimit, lookDownLimit);
+                cameraSocket.rotation = Quaternion.Euler(clampedPitch, yaw, 0f);
+            }
 
             if (targetCamera.transform.parent != cameraSocket)
             {
                 targetCamera.transform.SetParent(cameraSocket, false);
             }
 
+            var camera = balance.playerCamera;
             targetCamera.transform.localPosition = Vector3.zero;
-            targetCamera.transform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+            targetCamera.transform.localRotation = Quaternion.identity;
+            targetCamera.fieldOfView = camera.supportedCameraFieldOfView;
+            targetCamera.nearClipPlane = camera.supportedCameraNearClip;
             return true;
         }
 
@@ -228,17 +273,32 @@ namespace GroceryQuotaHorror.Player
         {
             if (mode == LooseBodyMode.Limp)
             {
-                mode = LooseBodyMode.Recovering;
-                recoveryStartedAt = Time.time;
+                BeginRecovery();
                 return;
             }
 
+            EnterLimpMode();
+        }
+
+        public void EnterLimpMode()
+        {
             if (mode == LooseBodyMode.Recovering)
             {
                 return;
             }
 
             mode = LooseBodyMode.Limp;
+        }
+
+        public void BeginRecovery()
+        {
+            if (mode != LooseBodyMode.Limp)
+            {
+                return;
+            }
+
+            mode = LooseBodyMode.Recovering;
+            recoveryStartedAt = Time.time;
         }
 
         public void ApplySupportedPose(Vector3 localMove, float speed01, bool sprinting, bool grounded, float lookYaw, float lookPitch, GameBalanceProfile balance)
@@ -284,6 +344,7 @@ namespace GroceryQuotaHorror.Player
             }
 
             visualCollapse = Mathf.MoveTowards(visualCollapse, 0f, deltaTime * 6f);
+            grabReach = Mathf.MoveTowards(grabReach, hasGrabTarget ? 1f : 0f, deltaTime * 9f);
             jumpPulse = Mathf.MoveTowards(jumpPulse, 0f, deltaTime * 5.5f);
             landingPulse = Mathf.MoveTowards(landingPulse, 0f, deltaTime * Mathf.Max(0.1f, movement.landingRecoverySpeed));
             ApplyModelCollapseOffset();
@@ -307,11 +368,14 @@ namespace GroceryQuotaHorror.Player
             var jumpExtension = jumpPulse * 0.65f;
 
             Drive(HumanBodyBones.Hips, new Vector3(leanForward * 0.2f + landingCompression * 10f - jumpExtension * 3f, 0f, -leanSide * 0.15f), body.pelvisTorque * 0.08f);
-            Drive(HumanBodyBones.Spine, new Vector3(leanForward * 0.25f + lookPitch * body.chestPitchWeight * 0.45f + landingCompression * 16f, lookYaw * body.chestYawWeight * 1.25f, -leanSide * 0.18f), body.spinePoseSharpness * 0.75f);
-            Drive(HumanBodyBones.Chest, new Vector3(leanForward * 0.35f + lookPitch * body.chestPitchWeight * 0.65f + landingCompression * 12f, lookYaw * body.chestYawWeight * 1.55f, -leanSide * 0.22f), body.spinePoseSharpness * 0.75f);
-            Drive(HumanBodyBones.UpperChest, new Vector3(lookPitch * body.chestPitchWeight * 0.75f, lookYaw * body.chestYawWeight * 1.75f, -leanSide * 0.16f), body.spinePoseSharpness * 0.7f);
-            Drive(HumanBodyBones.Neck, new Vector3(lookPitch * body.headPitchWeight * 0.7f, lookYaw * body.headYawWeight * 0.95f, 0f), body.headPoseSharpness * 0.85f);
-            Drive(HumanBodyBones.Head, new Vector3(lookPitch * body.headPitchWeight * 0.75f, lookYaw * body.headYawWeight * 1.1f, -leanSide * 0.08f), body.headPoseSharpness * 0.85f);
+            var grabLocalDirection = GetGrabLocalDirection();
+            var grabBend = Mathf.Clamp01(grabReach);
+            var grabForward = Mathf.Clamp01(grabLocalDirection.z * 0.5f + 0.5f) * grabBend;
+            Drive(HumanBodyBones.Spine, new Vector3(leanForward * 0.25f + lookPitch * body.chestPitchWeight * 0.45f + landingCompression * 16f + 16f * grabForward, lookYaw * body.chestYawWeight * 0.2f + grabLocalDirection.x * 12f * grabBend, -leanSide * 0.18f - grabLocalDirection.x * 5f * grabBend), body.spinePoseSharpness * 1.05f);
+            Drive(HumanBodyBones.Chest, new Vector3(leanForward * 0.35f + lookPitch * body.chestPitchWeight * 0.65f + landingCompression * 12f + 24f * grabForward, lookYaw * body.chestYawWeight * 0.3f + grabLocalDirection.x * 18f * grabBend, -leanSide * 0.22f - grabLocalDirection.x * 7f * grabBend), body.spinePoseSharpness * 1.05f);
+            Drive(HumanBodyBones.UpperChest, new Vector3(lookPitch * body.chestPitchWeight * 0.75f + 16f * grabForward, lookYaw * body.chestYawWeight * 0.38f + grabLocalDirection.x * 12f * grabBend, -leanSide * 0.16f), body.spinePoseSharpness * 0.9f);
+            Drive(HumanBodyBones.Neck, new Vector3(lookPitch * body.headPitchWeight * 0.7f - 4f * grabForward, lookYaw * body.headYawWeight * 0.3f, 0f), body.headPoseSharpness * 0.85f);
+            Drive(HumanBodyBones.Head, new Vector3(lookPitch * body.headPitchWeight * 0.75f - 5f * grabForward, lookYaw * body.headYawWeight * 0.45f, -leanSide * 0.08f), body.headPoseSharpness * 0.85f);
 
             var lateralArmSway = lateralLag * body.armDragDegrees * 0.35f;
 
@@ -327,12 +391,30 @@ namespace GroceryQuotaHorror.Player
             var gravityBias = Vector3.down * 0.72f;
             var leftUpperTarget = ConstrainArmOutsideBody((gravityBias - transform.right * 0.12f + inertialDrag).normalized, -1f);
             var rightUpperTarget = ConstrainArmOutsideBody((gravityBias + transform.right * 0.12f + inertialDrag).normalized, 1f);
-            SimulateArmDirection(ref leftUpperArmDirection, ref leftUpperArmVelocity, leftUpperTarget, 8.5f, 0.08f, deltaTime, -1f, 75f);
-            SimulateArmDirection(ref rightUpperArmDirection, ref rightUpperArmVelocity, rightUpperTarget, 8.5f, 0.08f, deltaTime, 1f, 75f);
-            SimulateArmDirection(ref leftLowerArmDirection, ref leftLowerArmVelocity, (leftUpperArmDirection * 0.16f + Vector3.down * 0.42f + inertialDrag * 1.25f).normalized, 7f, 0.06f, deltaTime, -1f, 90f);
-            SimulateArmDirection(ref rightLowerArmDirection, ref rightLowerArmVelocity, (rightUpperArmDirection * 0.16f + Vector3.down * 0.42f + inertialDrag * 1.25f).normalized, 7f, 0.06f, deltaTime, 1f, 90f);
-            Drive(HumanBodyBones.LeftShoulder, new Vector3(0f, lookYaw * 0.01f, body.shoulderRollDegrees * armRelaxed * 0.65f + lateralArmSway * 0.08f), body.armPoseSharpness * 0.22f);
-            Drive(HumanBodyBones.RightShoulder, new Vector3(0f, lookYaw * 0.01f, -body.shoulderRollDegrees * armRelaxed * 0.65f + lateralArmSway * 0.08f), body.armPoseSharpness * 0.22f);
+            if (grabReach > 0.001f)
+            {
+                leftUpperTarget = Vector3.Slerp(leftUpperTarget, GetDirectionToGrabTarget(HumanBodyBones.LeftUpperArm, leftUpperTarget), grabReach);
+                rightUpperTarget = Vector3.Slerp(rightUpperTarget, GetDirectionToGrabTarget(HumanBodyBones.RightUpperArm, rightUpperTarget), grabReach);
+            }
+
+            var upperGrabSpring = Mathf.Lerp(8.5f, 18f, grabReach);
+            var upperGrabDamping = Mathf.Lerp(0.08f, 1.05f, grabReach);
+            var lowerGrabSpring = Mathf.Lerp(7f, 22f, grabReach);
+            var lowerGrabDamping = Mathf.Lerp(0.06f, 1.25f, grabReach);
+            SimulateArmDirection(ref leftUpperArmDirection, ref leftUpperArmVelocity, leftUpperTarget, upperGrabSpring, upperGrabDamping, deltaTime, -1f, Mathf.Lerp(75f, 38f, grabReach));
+            SimulateArmDirection(ref rightUpperArmDirection, ref rightUpperArmVelocity, rightUpperTarget, upperGrabSpring, upperGrabDamping, deltaTime, 1f, Mathf.Lerp(75f, 38f, grabReach));
+            var leftLowerTarget = (leftUpperArmDirection * 0.16f + Vector3.down * 0.42f + inertialDrag * 1.25f).normalized;
+            var rightLowerTarget = (rightUpperArmDirection * 0.16f + Vector3.down * 0.42f + inertialDrag * 1.25f).normalized;
+            if (grabReach > 0.001f)
+            {
+                leftLowerTarget = Vector3.Slerp(leftLowerTarget, GetDirectionToGrabTarget(HumanBodyBones.LeftLowerArm, leftLowerTarget), grabReach);
+                rightLowerTarget = Vector3.Slerp(rightLowerTarget, GetDirectionToGrabTarget(HumanBodyBones.RightLowerArm, rightLowerTarget), grabReach);
+            }
+
+            SimulateArmDirection(ref leftLowerArmDirection, ref leftLowerArmVelocity, leftLowerTarget, lowerGrabSpring, lowerGrabDamping, deltaTime, -1f, Mathf.Lerp(90f, 32f, grabReach));
+            SimulateArmDirection(ref rightLowerArmDirection, ref rightLowerArmVelocity, rightLowerTarget, lowerGrabSpring, lowerGrabDamping, deltaTime, 1f, Mathf.Lerp(90f, 32f, grabReach));
+            Drive(HumanBodyBones.LeftShoulder, new Vector3(grabLocalDirection.z * -7f * grabReach, lookYaw * 0.01f + grabLocalDirection.x * 8f * grabReach, body.shoulderRollDegrees * armRelaxed * 0.65f + lateralArmSway * 0.08f), body.armPoseSharpness * 0.22f);
+            Drive(HumanBodyBones.RightShoulder, new Vector3(grabLocalDirection.z * -7f * grabReach, lookYaw * 0.01f + grabLocalDirection.x * 8f * grabReach, -body.shoulderRollDegrees * armRelaxed * 0.65f + lateralArmSway * 0.08f), body.armPoseSharpness * 0.22f);
             DriveLimbTowardWorldDirection(HumanBodyBones.LeftUpperArm, HumanBodyBones.LeftLowerArm, leftUpperArmDirection, body.armPoseSharpness * 8.5f);
             DriveLimbTowardWorldDirection(HumanBodyBones.RightUpperArm, HumanBodyBones.RightLowerArm, rightUpperArmDirection, body.armPoseSharpness * 8.5f);
             DriveLimbTowardWorldDirection(HumanBodyBones.LeftLowerArm, HumanBodyBones.LeftHand, leftLowerArmDirection, body.armPoseSharpness * 7f);
@@ -499,6 +581,61 @@ namespace GroceryQuotaHorror.Player
             rightLowerArmVelocity = Vector3.zero;
         }
 
+        private Vector3 GetGrabLocalDirection()
+        {
+            if (!hasGrabTarget || !bones.TryGetValue(HumanBodyBones.Chest, out var chest) || chest == null)
+            {
+                return Vector3.zero;
+            }
+
+            var toTarget = grabTargetPosition - chest.position;
+            if (toTarget.sqrMagnitude < 0.0001f)
+            {
+                return Vector3.zero;
+            }
+
+            return Vector3.ClampMagnitude(transform.InverseTransformDirection(toTarget.normalized), 1f);
+        }
+
+        private Vector3 GetDirectionToGrabTarget(HumanBodyBones boneType, Vector3 fallbackDirection)
+        {
+            if (!hasGrabTarget || !bones.TryGetValue(boneType, out var bone) || bone == null)
+            {
+                return fallbackDirection;
+            }
+
+            var toTarget = grabTargetPosition - bone.position;
+            if (toTarget.sqrMagnitude < 0.0001f)
+            {
+                return fallbackDirection;
+            }
+
+            return toTarget.normalized;
+        }
+
+        private Vector3 GetGrabPoseTarget(Vector3 grabbedPoint)
+        {
+            if (!bones.TryGetValue(HumanBodyBones.Chest, out var chest) || chest == null)
+            {
+                return grabbedPoint;
+            }
+
+            var chestPosition = chest.position;
+            var toGrab = grabbedPoint - chestPosition;
+            var flatToGrab = Vector3.ProjectOnPlane(toGrab, Vector3.up);
+            if (flatToGrab.sqrMagnitude < 0.0001f)
+            {
+                flatToGrab = transform.forward;
+            }
+
+            flatToGrab.Normalize();
+            var closeCarryPoint =
+                chestPosition +
+                flatToGrab * 0.58f +
+                Vector3.down * 0.26f;
+            return Vector3.Lerp(grabbedPoint, closeCarryPoint, 0.72f);
+        }
+
         private void SimulateArmDirection(ref Vector3 direction, ref Vector3 velocity, Vector3 targetDirection, float spring, float damping, float deltaTime, float side, float maxVelocity)
         {
             if (direction.sqrMagnitude < 0.0001f)
@@ -516,11 +653,17 @@ namespace GroceryQuotaHorror.Player
             velocity *= Mathf.Exp(-damping * deltaTime);
             velocity = Vector3.ClampMagnitude(velocity, maxVelocity);
 
-            direction = ConstrainArmOutsideBody((direction + velocity * deltaTime).normalized, side);
+            direction = ConstrainArmOutsideBody((direction + velocity * deltaTime).normalized, side, ref velocity);
             velocity = Vector3.ProjectOnPlane(velocity, direction);
         }
 
         private Vector3 ConstrainArmOutsideBody(Vector3 direction, float side)
+        {
+            var velocity = Vector3.zero;
+            return ConstrainArmOutsideBody(direction, side, ref velocity);
+        }
+
+        private Vector3 ConstrainArmOutsideBody(Vector3 direction, float side, ref Vector3 velocity)
         {
             if (direction.sqrMagnitude < 0.0001f)
             {
@@ -533,7 +676,17 @@ namespace GroceryQuotaHorror.Player
             var downDot = Vector3.Dot(direction, Vector3.down);
             if (outwardDot < 0.16f && downDot < 0.94f)
             {
-                direction = (direction + outward * (0.16f - outwardDot) * 2.5f).normalized;
+                var penetration01 = Mathf.InverseLerp(0.16f, -0.35f, outwardDot);
+                var contactNormal = outward;
+                var inwardSpeed = Vector3.Dot(velocity, -contactNormal);
+                if (inwardSpeed > 0f)
+                {
+                    velocity += contactNormal * inwardSpeed;
+                    velocity *= Mathf.Lerp(0.72f, 0.35f, penetration01);
+                }
+
+                var correctionStrength = Mathf.Lerp(0.25f, 0.85f, penetration01);
+                direction = (direction + contactNormal * (0.16f - outwardDot) * correctionStrength).normalized;
             }
 
             if (Vector3.Dot(direction, Vector3.up) > 0.05f)

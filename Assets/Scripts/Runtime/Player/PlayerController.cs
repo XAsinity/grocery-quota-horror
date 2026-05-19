@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using GroceryQuotaHorror.Core;
 using GroceryQuotaHorror.Data;
 using GroceryQuotaHorror.Interaction;
+using GroceryQuotaHorror.Monsters;
 using GroceryQuotaHorror.Physics;
 using Unity.Netcode;
 using Unity.Netcode.Components;
@@ -22,6 +23,42 @@ namespace GroceryQuotaHorror.Player
         [SerializeField] private ActiveRagdollController activeRagdoll;
         [SerializeField] private PlayerLooseBodyController looseBody;
 
+        private struct ImpactRecoveryState
+        {
+            public bool Active;
+            public float Severity01;
+            public float AccumulatedKnockout01;
+            public float PendingImpactDamage01;
+            public float EarliestRecoveryTime;
+            public float StableHoldSeconds;
+
+            public void Reset()
+            {
+                Active = false;
+                Severity01 = 0f;
+                AccumulatedKnockout01 = 0f;
+                PendingImpactDamage01 = 0f;
+                EarliestRecoveryTime = 0f;
+                StableHoldSeconds = 0f;
+            }
+        }
+
+        private readonly struct ImpactCollisionEvent
+        {
+            public ImpactCollisionEvent(Vector3 velocity, Vector3 point, Collider sourceCollider, float sourceMass)
+            {
+                Velocity = velocity;
+                Point = point;
+                SourceCollider = sourceCollider;
+                SourceMass = sourceMass;
+            }
+
+            public Vector3 Velocity { get; }
+            public Vector3 Point { get; }
+            public Collider SourceCollider { get; }
+            public float SourceMass { get; }
+        }
+
         private readonly NetworkVariable<bool> isDowned = new();
         private readonly NetworkVariable<bool> isHidden = new();
 
@@ -29,12 +66,13 @@ namespace GroceryQuotaHorror.Player
         private Rigidbody rootBody;
         private CapsuleCollider physicalCollider;
         private Camera playerCamera;
-        private Transform cameraAnchor;
+        private PlayerImpactOverlay impactOverlay;
         private Vector3 velocity;
         private Vector3 smoothedMoveInput;
         private ItemPickup heldItem;
         private Rigidbody grabbedBody;
         private SpawnableRagdoll grabbedRagdoll;
+        private Vector3 grabbedLocalPoint;
         private Vector3 lastGrabbedTargetPosition;
         private Vector3 grabbedTargetVelocity;
         private float cameraPitch;
@@ -63,11 +101,17 @@ namespace GroceryQuotaHorror.Player
         private Vector3 postRecoveryExpectedRoot;
         private float postRecoveryAnchorUntil;
         private bool recoveryPending;
+        private ImpactRecoveryState impactRecovery;
         private float recoverAtTime;
+        private float nextAllowedImpactRagdollTime;
+        private float nextRecoveryStabilityDebugAt;
         private const float GroundSnapSkin = 0f;
         private const float GroundSnapProbeHeight = 2f;
         private const float GroundSnapProbeDistance = 8f;
         private const float GroundSnapMaxUpwardCorrection = 0.22f;
+        private const float GroundProbeStickDistance = 0.34f;
+        private const float GroundProbePenetrationTolerance = 0.06f;
+        private const float GroundProbeMaxCorrectionPerStep = 0.08f;
         private const float RecoveryMaxUpwardCorrection = 0.18f;
         private const float MinGroundNormalY = 0.45f;
         private const float RecoveryCenterRayStartOffset = 0.35f;
@@ -78,6 +122,7 @@ namespace GroceryQuotaHorror.Player
         private const float PostRecoveryWatchSeconds = 0.75f;
         private const float PostRecoveryLogInterval = 0.15f;
         private const float PostRecoveryDriftWarnDistance = 0.35f;
+        private const float RecoveryStabilityDebugInterval = 1f;
 
         public bool IsDowned => isDowned.Value;
         public bool IsHidden => isHidden.Value;
@@ -86,6 +131,117 @@ namespace GroceryQuotaHorror.Player
 
         private bool HasLocalAuthority => !IsSpawned || IsOwner;
         private GameBalanceProfile Balance => GameRuntime.Balance;
+
+        public bool TryBeginImpactRagdoll(Vector3 impactVelocity, Vector3 impactPoint, Collider source, float sourceMassOverride = -1f)
+        {
+            if (Balance == null || IsDowned || Time.time < nextAllowedImpactRagdollTime)
+            {
+                return false;
+            }
+
+            var ragdoll = Balance.ragdoll;
+            var speed = impactVelocity.magnitude;
+            if (speed < ragdoll.impactVelocityThreshold)
+            {
+                return false;
+            }
+
+            if (!TryResolveVisibleImpactPoint(impactPoint, ragdoll.impactContactPadding, out var resolvedImpactPoint, out var hitHeight01))
+            {
+                return false;
+            }
+
+            var direction = impactVelocity.sqrMagnitude > 0.0001f ? impactVelocity.normalized : transform.forward;
+            if (source != null && source.attachedRigidbody != null)
+            {
+                var sourceToPlayer = transform.position - source.bounds.center;
+                sourceToPlayer.y = 0f;
+                if (sourceToPlayer.sqrMagnitude > 0.0001f && Vector3.Dot(direction, sourceToPlayer.normalized) < 0f)
+                {
+                    direction = sourceToPlayer.normalized;
+                }
+            }
+
+            nextAllowedImpactRagdollTime = Time.time + ragdoll.impactCooldown;
+            var sourceMass = sourceMassOverride > 0f ? sourceMassOverride : source != null && source.attachedRigidbody != null ? source.attachedRigidbody.mass : 1f;
+            var sourceMassFactor = Mathf.Clamp(Mathf.Sqrt(Mathf.Max(0.01f, sourceMass) / Mathf.Max(1f, ragdoll.impactMassReference)), 0.18f, 2.2f);
+            var localImpulseMassFactor = Mathf.Clamp(sourceMassFactor, 0.55f, 2.2f);
+            var lowHit01 = Mathf.InverseLerp(0.48f, 0.16f, hitHeight01);
+            var wholeBodyVelocityShare = Mathf.Lerp(ragdoll.impactWholeBodyVelocityShare, ragdoll.impactLowHitVelocityShare, lowHit01);
+            var transferredVelocity = Vector3.ClampMagnitude(
+                direction * speed * ragdoll.impactVelocityTransfer * sourceMassFactor + Vector3.up * Mathf.Min(speed * 0.06f * sourceMassFactor, 1.6f),
+                ragdoll.impactMaxTransferredSpeed);
+            var impulseMagnitude = Mathf.Min(speed * ragdoll.impactImpulseMultiplier * localImpulseMassFactor, ragdoll.impactMaxImpulse);
+            var impulse = direction * impulseMagnitude * Mathf.Lerp(1f, ragdoll.impactLowHitImpulseMultiplier, lowHit01);
+            var angularVelocity = rootBody != null ? rootBody.angularVelocity : Vector3.zero;
+            var wholeBodyVelocity = transferredVelocity * wholeBodyVelocityShare;
+            var severity01 = CalculateImpactRecoverySeverity(speed, sourceMass, impulseMagnitude, transferredVelocity.magnitude, ragdoll);
+            var recoveryDelay = Mathf.Lerp(ragdoll.impactRecoveryMinDelay, ragdoll.impactRecoveryMaxDelay, severity01);
+            BeginLimpRagdoll(wholeBodyVelocity, angularVelocity, impulse, resolvedImpactPoint, true, recoveryDelay, severity01);
+            return true;
+        }
+
+        public bool TryBeginPrototypeMonsterThrow(Vector3 throwDirection, Vector3 impactPoint, Collider source)
+        {
+            if (Balance == null || IsDowned || Time.time < nextAllowedImpactRagdollTime)
+            {
+                return false;
+            }
+
+            if (!TryResolveVisibleImpactPoint(impactPoint, Balance.ragdoll.impactContactPadding, out var resolvedImpactPoint, out _))
+            {
+                resolvedImpactPoint = transform.position + Vector3.up;
+            }
+
+            var flatDirection = Vector3.ProjectOnPlane(throwDirection, Vector3.up);
+            if (flatDirection.sqrMagnitude < 0.0001f)
+            {
+                flatDirection = transform.forward;
+            }
+
+            flatDirection.Normalize();
+            var monster = Balance.monster;
+            var throwVelocity = flatDirection * monster.prototypeThrowSpeed + Vector3.up * monster.prototypeThrowUpwardVelocity;
+            var throwImpulse = (flatDirection + Vector3.up * 0.35f).normalized * monster.prototypeThrowImpulse;
+            var angularVelocity = rootBody != null ? rootBody.angularVelocity + Vector3.Cross(Vector3.up, flatDirection) * 6f : Vector3.Cross(Vector3.up, flatDirection) * 6f;
+            var severity01 = Mathf.Clamp01(monster.prototypeThrowSeverity);
+            var recoveryDelay = Mathf.Lerp(Balance.ragdoll.impactRecoveryMinDelay, Balance.ragdoll.impactRecoveryMaxDelay, severity01);
+            nextAllowedImpactRagdollTime = Time.time + Balance.ragdoll.impactCooldown;
+            BeginLimpRagdoll(throwVelocity, angularVelocity, throwImpulse, resolvedImpactPoint, true, recoveryDelay, severity01);
+            Debug.Log($"[MonsterPrototype] Monster throw applied velocity={throwVelocity} impulse={throwImpulse.magnitude:0.0} severity={severity01:0.00}.", this);
+            return true;
+        }
+
+        private static float CalculateImpactRecoverySeverity(float speed, float sourceMass, float impulseMagnitude, float transferredSpeed, RagdollTuning ragdoll)
+        {
+            var speed01 = Mathf.Clamp01(speed / Mathf.Max(0.01f, ragdoll.impactRecoverySeverityReferenceSpeed));
+            var mass01 = Mathf.Clamp01(Mathf.Sqrt(Mathf.Max(0.01f, sourceMass) / Mathf.Max(1f, ragdoll.impactRecoverySeverityMassReference)));
+            var impulse01 = Mathf.Clamp01(impulseMagnitude / Mathf.Max(0.01f, ragdoll.impactMaxImpulse));
+            var transfer01 = Mathf.Clamp01(transferredSpeed / Mathf.Max(0.01f, ragdoll.impactMaxTransferredSpeed));
+            return Mathf.Clamp01(speed01 * 0.45f + mass01 * 0.2f + impulse01 * 0.25f + transfer01 * 0.1f);
+        }
+
+        private bool TryResolveVisibleImpactPoint(Vector3 rawPoint, float contactPadding, out Vector3 resolvedPoint, out float height01)
+        {
+            resolvedPoint = rawPoint;
+            height01 = 0.5f;
+
+            if (!TryGetVisibleBodyBounds(out var bodyBounds))
+            {
+                return true;
+            }
+
+            height01 = Mathf.InverseLerp(bodyBounds.min.y, bodyBounds.max.y, rawPoint.y);
+            var closestBoundsPoint = bodyBounds.ClosestPoint(rawPoint);
+            var boundsDistance = Vector3.Distance(rawPoint, closestBoundsPoint);
+            if (boundsDistance > Mathf.Max(0.02f, contactPadding))
+            {
+                return false;
+            }
+
+            resolvedPoint = closestBoundsPoint;
+            return true;
+        }
 
         private void Awake()
         {
@@ -216,6 +372,7 @@ namespace GroceryQuotaHorror.Player
             }
 
             MoveAndLook();
+            UpdateLooseBodyGrabTarget();
             var supportedMove = Vector3.ClampMagnitude(smoothedMoveInput, 1f);
             var supportedSpeed01 = supportedMove.magnitude;
             var supportedSprinting = wantsSprint && smoothedMoveInput.sqrMagnitude > 0.01f;
@@ -233,6 +390,7 @@ namespace GroceryQuotaHorror.Player
             }
 
             HandleRagdollSpawnInput();
+            HandleMonsterSpawnInput();
             HandleRagdollGrabInput();
 
             if (Input.GetKeyDown(KeyCode.E))
@@ -258,14 +416,21 @@ namespace GroceryQuotaHorror.Player
 
             var interaction = Balance.interaction;
             var ragdoll = Balance.ragdoll;
+            UpdateLooseBodyGrabTarget();
             var targetPosition = playerCamera.transform.position + playerCamera.transform.forward * interaction.grabbedHoldDistance;
+            if (looseBody != null && looseBody.TryGetGrabAnchorPosition(out var handAnchor))
+            {
+                targetPosition = Vector3.Lerp(targetPosition, handAnchor, 0.72f);
+            }
+
             grabbedTargetVelocity = (targetPosition - lastGrabbedTargetPosition) / Mathf.Max(Time.fixedDeltaTime, 0.0001f);
             lastGrabbedTargetPosition = targetPosition;
 
-            var toTarget = targetPosition - grabbedBody.worldCenterOfMass;
+            var grabbedPoint = grabbedBody.transform.TransformPoint(grabbedLocalPoint);
+            var toTarget = targetPosition - grabbedPoint;
             var desiredAcceleration = new Vector3(toTarget.x, toTarget.y * ragdoll.ragdollHeldVerticalAssist, toTarget.z);
-            var force = desiredAcceleration * ragdoll.ragdollHoldForce - grabbedBody.linearVelocity * ragdoll.ragdollHoldDamping;
-            grabbedBody.AddForce(Vector3.ClampMagnitude(force, ragdoll.ragdollHeldMaxForce), ForceMode.Acceleration);
+            var force = desiredAcceleration * ragdoll.ragdollHoldForce - grabbedBody.GetPointVelocity(grabbedPoint) * ragdoll.ragdollHoldDamping;
+            grabbedBody.AddForceAtPosition(Vector3.ClampMagnitude(force, ragdoll.ragdollHeldMaxForce), grabbedPoint, ForceMode.Acceleration);
             grabbedBody.angularVelocity *= 0.94f;
         }
 
@@ -340,7 +505,17 @@ namespace GroceryQuotaHorror.Player
                 visualLookYaw = Mathf.MoveTowards(visualLookYaw, 0f, body.supportedLookYawReturnSharpness * 16f * Time.deltaTime);
             }
 
-            cameraPitch = Mathf.Clamp(cameraPitch - mouseY * movement.mouseTurnRate * Time.deltaTime, -movement.maxLookPitch, movement.maxLookPitch);
+            cameraPitch = ClampFirstPersonPitch(cameraPitch - mouseY * movement.mouseTurnRate * Time.deltaTime, movement);
+        }
+
+        private static float ClampFirstPersonPitch(float pitch, PlayerMovementTuning movement)
+        {
+            var camera = GameRuntime.Balance != null ? GameRuntime.Balance.playerCamera : null;
+            var fallbackLimit = movement != null ? Mathf.Abs(movement.maxLookPitch) : 80f;
+            var configuredLimit = movement != null ? Mathf.Abs(movement.maxLookPitch) : fallbackLimit;
+            var lookUpLimit = Mathf.Min(configuredLimit, camera != null ? camera.firstPersonLookUpLimit : 72f);
+            var lookDownLimit = Mathf.Min(configuredLimit, camera != null ? camera.firstPersonLookDownLimit : 58f);
+            return Mathf.Clamp(pitch, -lookUpLimit, lookDownLimit);
         }
 
         private void ApplyPhysicalMovement()
@@ -374,6 +549,7 @@ namespace GroceryQuotaHorror.Player
             var movement = Balance.playerMovement;
             var speed = movement.moveSpeed * (wantsSprint ? movement.sprintMultiplier : 1f);
             var rootRotation = Quaternion.Euler(0f, targetYaw, 0f);
+            RefreshGroundProbe();
             var grounded = IsPhysicallyGrounded();
             if (!wasGroundedLastPhysics && grounded)
             {
@@ -421,8 +597,7 @@ namespace GroceryQuotaHorror.Player
             rootBody.AddForce(acceleration, ForceMode.Acceleration);
 
             rootBody.AddForce(Vector3.up * movement.playerGravity, ForceMode.Acceleration);
-            var movingOnGround = grounded && desiredMoveInput.sqrMagnitude > 0.01f;
-            if (movingOnGround)
+            if (grounded)
             {
                 rootBody.AddForce(-groundNormal * movement.groundStickForce, ForceMode.Acceleration);
             }
@@ -444,6 +619,60 @@ namespace GroceryQuotaHorror.Player
             }
 
             wasGroundedLastPhysics = grounded;
+        }
+
+        private void RefreshGroundProbe()
+        {
+            if (physicalCollider == null || rootBody == null || Time.time < ignoreGroundContactsUntil)
+            {
+                return;
+            }
+
+            var localBottom = physicalCollider.center.y - physicalCollider.height * 0.5f;
+            var bottomWorld = transform.TransformPoint(new Vector3(physicalCollider.center.x, localBottom, physicalCollider.center.z));
+            var probeOrigin = bottomWorld + Vector3.up * 0.55f;
+            var hits = UnityEngine.Physics.RaycastAll(probeOrigin, Vector3.down, 0.55f + GroundProbeStickDistance, ~0, QueryTriggerInteraction.Ignore);
+            var bestGap = float.MaxValue;
+            var bestNormal = Vector3.up;
+            var found = false;
+            for (var i = 0; i < hits.Length; i++)
+            {
+                var hit = hits[i];
+                if (hit.collider == null || hit.collider.transform.IsChildOf(transform) || hit.normal.y < MinGroundNormalY)
+                {
+                    continue;
+                }
+
+                var gap = bottomWorld.y - hit.point.y;
+                if (gap < -GroundProbePenetrationTolerance || gap > GroundProbeStickDistance || Mathf.Abs(gap) >= Mathf.Abs(bestGap))
+                {
+                    continue;
+                }
+
+                bestGap = gap;
+                bestNormal = hit.normal;
+                found = true;
+            }
+
+            if (!found)
+            {
+                return;
+            }
+
+            groundedUntilTime = Time.time + 0.1f;
+            lastGroundNormal = bestNormal;
+            if (bestGap > 0.025f && rootBody.linearVelocity.y <= 0.2f)
+            {
+                var correction = Vector3.down * Mathf.Min(bestGap, GroundProbeMaxCorrectionPerStep);
+                transform.position += correction;
+                rootBody.position = transform.position;
+            }
+            else if (bestGap < -GroundProbePenetrationTolerance * 0.5f)
+            {
+                var correction = Vector3.up * Mathf.Min(-bestGap, GroundProbeMaxCorrectionPerStep);
+                transform.position += correction;
+                rootBody.position = transform.position;
+            }
         }
 
         private void ApplyGravityOnly()
@@ -483,42 +712,49 @@ namespace GroceryQuotaHorror.Player
             SetPhysicalRootEnabled(true);
             IgnoreSelfPhysicsCollisions();
             looseBody?.Initialize();
+            if (impactOverlay == null)
+            {
+                impactOverlay = GetComponent<PlayerImpactOverlay>();
+            }
+
+            if (impactOverlay == null)
+            {
+                impactOverlay = gameObject.AddComponent<PlayerImpactOverlay>();
+            }
+
             SnapRootToGround();
             playerCamera = GetComponentInChildren<Camera>(true);
             if (playerCamera == null)
             {
-                playerCamera = Camera.main;
+                Debug.LogError("Player prefab is missing its child Main Camera. Head-attached first-person camera cannot initialize.", this);
+                return;
             }
 
-            if (playerCamera != null)
+            playerCamera.tag = "MainCamera";
+            playerCamera.enabled = true;
+            var listener = playerCamera.GetComponent<AudioListener>();
+            if (listener != null)
             {
-                playerCamera.tag = "MainCamera";
-                playerCamera.enabled = true;
-                var listener = playerCamera.GetComponent<AudioListener>();
-                if (listener != null)
-                {
-                    listener.enabled = true;
-                }
-
-                var cameras = FindObjectsByType<Camera>(FindObjectsSortMode.None);
-                for (var i = 0; i < cameras.Length; i++)
-                {
-                    if (cameras[i] == playerCamera)
-                    {
-                        continue;
-                    }
-
-                    cameras[i].enabled = false;
-                    var otherListener = cameras[i].GetComponent<AudioListener>();
-                    if (otherListener != null)
-                    {
-                        otherListener.enabled = false;
-                    }
-                }
-
-                RefreshCameraAttachment(true);
+                listener.enabled = true;
             }
 
+            var cameras = FindObjectsByType<Camera>(FindObjectsSortMode.None);
+            for (var i = 0; i < cameras.Length; i++)
+            {
+                if (cameras[i] == playerCamera)
+                {
+                    continue;
+                }
+
+                cameras[i].enabled = false;
+                var otherListener = cameras[i].GetComponent<AudioListener>();
+                if (otherListener != null)
+                {
+                    otherListener.enabled = false;
+                }
+            }
+
+            RefreshCameraAttachment(true);
             ApplyVisualState();
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
@@ -553,7 +789,11 @@ namespace GroceryQuotaHorror.Player
                 physicalCollider.radius = controller.radius;
             }
 
-            FitPhysicalColliderToVisibleBody();
+            if (controller == null)
+            {
+                FitPhysicalColliderToVisibleBody();
+            }
+
             if (controller != null)
             {
                 controller.center = physicalCollider.center;
@@ -578,9 +818,10 @@ namespace GroceryQuotaHorror.Player
             }
 
             var localCenter = transform.InverseTransformPoint(bounds.center);
+            var localBottom = transform.InverseTransformPoint(new Vector3(bounds.center.x, bounds.min.y, bounds.center.z)).y;
             var height = Mathf.Max(1.2f, bounds.size.y);
             var radius = Mathf.Clamp(Mathf.Max(bounds.extents.x, bounds.extents.z) * 0.38f, 0.22f, 0.45f);
-            physicalCollider.center = new Vector3(localCenter.x, Mathf.Max(height * 0.5f, radius), localCenter.z);
+            physicalCollider.center = new Vector3(localCenter.x, Mathf.Max(localBottom + height * 0.5f, radius), localCenter.z);
             physicalCollider.height = Mathf.Max(height, radius * 2f);
             physicalCollider.radius = radius;
         }
@@ -683,6 +924,8 @@ namespace GroceryQuotaHorror.Player
             }
 
             rootBody.position = groundedPosition;
+            groundedUntilTime = Time.time + 0.1f;
+            lastGroundNormal = Vector3.up;
             if (!rootBody.isKinematic)
             {
                 var velocity = rootBody.linearVelocity;
@@ -801,6 +1044,8 @@ namespace GroceryQuotaHorror.Player
 
         private void OnCollisionStay(Collision collision)
         {
+            HandleExternalImpactCollision(collision);
+
             if (Time.time < ignoreGroundContactsUntil)
             {
                 return;
@@ -817,6 +1062,132 @@ namespace GroceryQuotaHorror.Player
             }
         }
 
+        private void OnCollisionEnter(Collision collision)
+        {
+            HandleExternalImpactCollision(collision, true);
+        }
+
+        public void HandleExternalImpactCollision(Collision collision, bool allowFallImpact = false)
+        {
+            if (!TryBuildImpactCollisionEvent(collision, allowFallImpact, out var impactEvent))
+            {
+                return;
+            }
+
+            TryBeginImpactRagdoll(
+                impactEvent.Velocity,
+                impactEvent.Point,
+                impactEvent.SourceCollider,
+                impactEvent.SourceMass);
+        }
+
+        private bool TryBuildImpactCollisionEvent(Collision collision, bool allowStaticSurfaceImpact, out ImpactCollisionEvent impactEvent)
+        {
+            impactEvent = default;
+            if (collision == null || Balance == null || !Balance.ragdoll.impactWorldCollisionEnabled)
+            {
+                return false;
+            }
+
+            var ragdoll = Balance.ragdoll;
+            var sourceBody = collision.rigidbody;
+            if (sourceBody != null)
+            {
+                if (sourceBody == rootBody || sourceBody.transform.IsChildOf(transform) || sourceBody.mass < ragdoll.impactMinimumSourceMass)
+                {
+                    return false;
+                }
+
+                var sourceCollider = collision.collider != null ? collision.collider : sourceBody.GetComponent<Collider>();
+                if (sourceCollider != null && sourceCollider.GetComponentInParent<PlayerController>() == this)
+                {
+                    return false;
+                }
+
+                var impactPoint = collision.contactCount > 0 ? collision.GetContact(0).point : transform.position;
+                var rigidbodyImpactVelocity = ResolveExternalImpactVelocity(collision, sourceBody, impactPoint);
+                impactEvent = new ImpactCollisionEvent(rigidbodyImpactVelocity, impactPoint, sourceCollider, sourceBody.mass);
+                return true;
+            }
+
+            if (!allowStaticSurfaceImpact || !ragdoll.impactFallRagdollEnabled || collision.contactCount <= 0)
+            {
+                return false;
+            }
+
+            var bestSupportNormal = Vector3.zero;
+            var staticImpactPoint = collision.GetContact(0).point;
+            for (var i = 0; i < collision.contactCount; i++)
+            {
+                var contact = collision.GetContact(i);
+                if (contact.normal.y <= bestSupportNormal.y)
+                {
+                    continue;
+                }
+
+                bestSupportNormal = contact.normal;
+                staticImpactPoint = contact.point;
+            }
+
+            if (bestSupportNormal.y < MinGroundNormalY)
+            {
+                return false;
+            }
+
+            var collisionSpeed = collision.relativeVelocity.magnitude;
+            var downwardSpeed = Mathf.Max(0f, -Vector3.Dot(collision.relativeVelocity, bestSupportNormal));
+            var impactSpeed = Mathf.Max(collisionSpeed, downwardSpeed) * Mathf.Max(0.01f, ragdoll.impactFallVelocityMultiplier);
+            if (impactSpeed < ragdoll.impactFallVelocityThreshold)
+            {
+                return false;
+            }
+
+            var staticSurfaceImpactVelocity = bestSupportNormal.normalized * impactSpeed;
+            if (TryGetVisibleBodyBounds(out var bodyBounds))
+            {
+                staticImpactPoint = bodyBounds.ClosestPoint(staticImpactPoint);
+            }
+
+            impactEvent = new ImpactCollisionEvent(
+                staticSurfaceImpactVelocity,
+                staticImpactPoint,
+                collision.collider,
+                Mathf.Max(1f, ragdoll.impactFallEffectiveMass));
+            return true;
+        }
+
+        private Vector3 ResolveExternalImpactVelocity(Collision collision, Rigidbody sourceBody, Vector3 impactPoint)
+        {
+            var sourceVelocity = sourceBody.GetPointVelocity(impactPoint);
+            var playerVelocity = rootBody != null && !rootBody.isKinematic
+                ? rootBody.GetPointVelocity(impactPoint)
+                : Vector3.zero;
+            var pointVelocity = sourceVelocity - playerVelocity;
+            return pointVelocity.sqrMagnitude >= collision.relativeVelocity.sqrMagnitude
+                ? pointVelocity
+                : collision.relativeVelocity;
+        }
+
+        private void EnsureImpactCollisionRelays()
+        {
+            var colliders = GetComponentsInChildren<Collider>(true);
+            for (var i = 0; i < colliders.Length; i++)
+            {
+                var childCollider = colliders[i];
+                if (childCollider == null || childCollider == physicalCollider || childCollider.transform == transform || childCollider.isTrigger)
+                {
+                    continue;
+                }
+
+                if (!childCollider.TryGetComponent<PlayerImpactCollisionRelay>(out var relay) || relay == null)
+                {
+                    relay = childCollider.gameObject.AddComponent<PlayerImpactCollisionRelay>();
+                }
+
+                relay.SetOwner(this);
+            }
+        }
+
         private void ToggleBodyState()
         {
             if (activeRagdoll == null)
@@ -826,7 +1197,15 @@ namespace GroceryQuotaHorror.Player
 
             if (activeRagdoll == null)
             {
-                looseBody?.ToggleLimpMode();
+                if (looseBody != null && looseBody.IsLimp)
+                {
+                    BeginDelayedRecovery();
+                }
+                else
+                {
+                    looseBody?.EnterLimpMode();
+                }
+
                 return;
             }
 
@@ -834,7 +1213,15 @@ namespace GroceryQuotaHorror.Player
             if (!activeRagdoll.EnsureInitialized())
             {
                 activeRagdoll.enabled = false;
-                looseBody?.ToggleLimpMode();
+                if (looseBody != null && looseBody.IsLimp)
+                {
+                    BeginDelayedRecovery();
+                }
+                else
+                {
+                    looseBody?.EnterLimpMode();
+                }
+
                 return;
             }
 
@@ -844,38 +1231,207 @@ namespace GroceryQuotaHorror.Player
                 return;
             }
 
-            activeRagdoll.SetState(BodyDriveState.Limp);
-            recoveryPending = false;
-            SetSupportedLimbCollidersEnabled(true);
             var currentVelocity = rootBody != null ? rootBody.linearVelocity : Vector3.zero;
             var currentAngularVelocity = rootBody != null ? rootBody.angularVelocity : Vector3.zero;
-            activeRagdoll.ApplyLimpVelocity(currentVelocity, currentAngularVelocity, transform.forward * Mathf.Max(1.5f, currentVelocity.magnitude * 0.35f));
-            SetPhysicalRootEnabled(false);
-            cameraFollowVelocity = Vector3.zero;
-            RefreshCameraAttachment(true);
+            BeginLimpRagdoll(currentVelocity, currentAngularVelocity, transform.forward * Mathf.Max(1.5f, currentVelocity.magnitude * 0.35f), transform.position + Vector3.up, false, ManualRecoveryDelaySeconds);
+        }
+
+        private void BeginLimpRagdoll(Vector3 linearVelocity, Vector3 angularVelocity, Vector3 impulse, Vector3 impactPoint, bool autoRecover, float recoveryDelaySeconds)
+        {
+            BeginLimpRagdoll(linearVelocity, angularVelocity, impulse, impactPoint, autoRecover, recoveryDelaySeconds, 0f);
+        }
+
+        private void BeginLimpRagdoll(Vector3 linearVelocity, Vector3 angularVelocity, Vector3 impulse, Vector3 impactPoint, bool autoRecover, float recoveryDelaySeconds, float impactSeverity01)
+        {
+            if (activeRagdoll == null)
+            {
+                activeRagdoll = GetComponent<ActiveRagdollController>();
+            }
+
+            if (activeRagdoll != null)
+            {
+                activeRagdoll.enabled = true;
+                if (activeRagdoll.EnsureInitialized())
+                {
+                    var wasAlreadyLimp = activeRagdoll.State == BodyDriveState.Limp;
+                    if (!wasAlreadyLimp)
+                    {
+                        activeRagdoll.SetState(BodyDriveState.Limp);
+                    }
+
+                    recoveryPending = false;
+                    EnsureImpactCollisionRelays();
+                    SetSupportedLimbCollidersEnabled(true);
+                    if (wasAlreadyLimp)
+                    {
+                        activeRagdoll.AddLimpImpulseAtPoint(impulse, impactPoint);
+                    }
+                    else
+                    {
+                        activeRagdoll.ApplyLimpImpact(linearVelocity, angularVelocity, impulse, impactPoint);
+                    }
+
+                    SetPhysicalRootEnabled(false);
+                    cameraFollowVelocity = Vector3.zero;
+                    RefreshCameraAttachment(true);
+                    if (autoRecover)
+                    {
+                        BeginImpactRecovery(impactSeverity01, recoveryDelaySeconds);
+                    }
+
+                    return;
+                }
+
+                activeRagdoll.enabled = false;
+            }
+
+            looseBody?.EnterLimpMode();
+            if (autoRecover)
+            {
+                BeginImpactRecovery(impactSeverity01, recoveryDelaySeconds);
+            }
         }
 
         private void BeginDelayedRecovery()
+        {
+            BeginDelayedRecovery(ManualRecoveryDelaySeconds);
+        }
+
+        private void BeginDelayedRecovery(float delaySeconds)
         {
             if (recoveryPending)
             {
                 return;
             }
 
+            impactRecovery.Reset();
             recoveryPending = true;
-            recoverAtTime = Time.time + ManualRecoveryDelaySeconds;
-            Debug.Log($"[Recovery] Manual recovery queued for {ManualRecoveryDelaySeconds:0.0}s from live ragdoll pose.", this);
+            recoverAtTime = Time.time + Mathf.Max(0.05f, delaySeconds);
+            Debug.Log($"[Recovery] Recovery queued for {Mathf.Max(0.05f, delaySeconds):0.0}s from live ragdoll pose.", this);
+        }
+
+        private void BeginImpactRecovery(float severity01, float delaySeconds)
+        {
+            var ragdoll = Balance != null ? Balance.ragdoll : null;
+            severity01 = Mathf.Clamp01(severity01);
+            var accumulated01 = severity01;
+            if (ragdoll != null && impactRecovery.Active)
+            {
+                accumulated01 = ragdoll.impactKnockoutAccumulationEnabled
+                    ? impactRecovery.AccumulatedKnockout01 + severity01 * Mathf.Max(0f, ragdoll.impactKnockoutAccumulationGain)
+                    : Mathf.Max(impactRecovery.AccumulatedKnockout01, severity01);
+            }
+
+            var maxAccumulated01 = ragdoll != null ? Mathf.Max(0.01f, ragdoll.impactKnockoutAccumulationMax) : 1f;
+            accumulated01 = Mathf.Clamp(accumulated01, 0f, maxAccumulated01);
+            var effectiveSeverity01 = Mathf.Clamp01(Mathf.Max(severity01, accumulated01));
+            var delay = ragdoll != null
+                ? Mathf.Lerp(ragdoll.impactRecoveryMinDelay, ragdoll.impactRecoveryMaxDelay, effectiveSeverity01)
+                : Mathf.Max(0.05f, delaySeconds);
+
+            impactRecovery.Active = true;
+            impactRecovery.Severity01 = Mathf.Max(impactRecovery.Severity01, effectiveSeverity01);
+            impactRecovery.AccumulatedKnockout01 = accumulated01;
+            impactRecovery.PendingImpactDamage01 = Mathf.Max(impactRecovery.PendingImpactDamage01, accumulated01);
+            impactRecovery.EarliestRecoveryTime = Mathf.Max(impactRecovery.EarliestRecoveryTime, Time.time + delay);
+            impactRecovery.StableHoldSeconds = 0f;
+            recoveryPending = true;
+            recoverAtTime = impactRecovery.EarliestRecoveryTime;
+            nextRecoveryStabilityDebugAt = recoverAtTime;
+            impactOverlay?.ShowImpact(impactRecovery.Severity01, ragdoll);
+            Debug.Log($"[Recovery] Impact recovery queued hitSeverity={severity01:0.00} accumulated={accumulated01:0.00} effective={impactRecovery.Severity01:0.00} earliest={delay:0.00}s pendingDamage01={impactRecovery.PendingImpactDamage01:0.00}.", this);
         }
 
         private void UpdatePendingRecovery()
         {
-            if (!recoveryPending || Time.time < recoverAtTime)
+            if (!recoveryPending)
+            {
+                return;
+            }
+
+            if (impactRecovery.Active)
+            {
+                if (!IsImpactRecoveryReady())
+                {
+                    return;
+                }
+            }
+            else if (Time.time < recoverAtTime)
             {
                 return;
             }
 
             recoveryPending = false;
+            if (activeRagdoll == null || activeRagdoll.State != BodyDriveState.Limp)
+            {
+                if (looseBody != null && looseBody.IsLimp)
+                {
+                    looseBody.BeginRecovery();
+                }
+
+                ClearImpactRecoveryVisuals();
+                return;
+            }
+
             RecoverFromCurrentRagdollPose();
+        }
+
+        private bool IsImpactRecoveryReady()
+        {
+            if (Balance == null || Time.time < impactRecovery.EarliestRecoveryTime)
+            {
+                return false;
+            }
+
+            if (activeRagdoll == null || !activeRagdoll.enabled || !activeRagdoll.IsAvailable)
+            {
+                return true;
+            }
+
+            if (!activeRagdoll.TryGetRagdollMotionStats(out var stats))
+            {
+                impactRecovery.StableHoldSeconds = 0f;
+                return false;
+            }
+
+            var ragdoll = Balance.ragdoll;
+            var stable =
+                stats.AverageLinearSpeed <= ragdoll.impactRecoveryMaxAverageSpeed &&
+                stats.MaxLinearSpeed <= ragdoll.impactRecoveryMaxBodySpeed &&
+                stats.AverageAngularSpeed <= ragdoll.impactRecoveryMaxAngularSpeed &&
+                stats.CenterOfMassDriftSpeed <= ragdoll.impactRecoveryMaxComDriftSpeed &&
+                HasRecoveryGroundSupport(stats.CenterOfMass, ragdoll.impactRecoveryGroundProbeDistance);
+
+            impactRecovery.StableHoldSeconds = stable
+                ? impactRecovery.StableHoldSeconds + Time.deltaTime
+                : 0f;
+            if (!stable && Time.time >= nextRecoveryStabilityDebugAt)
+            {
+                Debug.Log($"[Recovery] Waiting for stability avgSpeed={stats.AverageLinearSpeed:0.00}/{ragdoll.impactRecoveryMaxAverageSpeed:0.00} maxSpeed={stats.MaxLinearSpeed:0.00}/{ragdoll.impactRecoveryMaxBodySpeed:0.00} avgAngular={stats.AverageAngularSpeed:0.00}/{ragdoll.impactRecoveryMaxAngularSpeed:0.00} comDrift={stats.CenterOfMassDriftSpeed:0.00}/{ragdoll.impactRecoveryMaxComDriftSpeed:0.00}.", this);
+                nextRecoveryStabilityDebugAt = Time.time + RecoveryStabilityDebugInterval;
+            }
+
+            return impactRecovery.StableHoldSeconds >= ragdoll.impactRecoveryStableHoldSeconds;
+        }
+
+        private bool HasRecoveryGroundSupport(Vector3 centerOfMass, float probeDistance)
+        {
+            var hits = UnityEngine.Physics.RaycastAll(
+                centerOfMass + Vector3.up * RecoveryCenterRayStartOffset,
+                Vector3.down,
+                Mathf.Max(0.1f, probeDistance),
+                ~0,
+                QueryTriggerInteraction.Ignore);
+            for (var i = 0; i < hits.Length; i++)
+            {
+                var hit = hits[i];
+                if (hit.collider != null && !hit.collider.transform.IsChildOf(transform) && hit.normal.y >= MinGroundNormalY)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void RecoverFromCurrentRagdollPose()
@@ -890,6 +1446,7 @@ namespace GroceryQuotaHorror.Player
             if (!activeRagdoll.TryGetCurrentRagdollCenterOfMass(out var liveCenterOfMass))
             {
                 Debug.LogWarning("Recovery blocked because no live ragdoll center of mass was available. Staying ragdolled instead of falling back to the old root position.", this);
+                RequeueBlockedRecovery();
                 return;
             }
 
@@ -900,6 +1457,7 @@ namespace GroceryQuotaHorror.Player
             if (!TryResolveRecoveryRootPosition(liveCenterOfMass, out var recoveryRootPosition))
             {
                 Debug.LogWarning($"[Recovery] Blocked: no valid ground under live COM {liveCenterOfMass}. Staying ragdolled.", this);
+                RequeueBlockedRecovery();
                 return;
             }
 
@@ -908,6 +1466,7 @@ namespace GroceryQuotaHorror.Player
             if (!IsStandingCapsuleClear(recoveryRootPosition))
             {
                 Debug.LogWarning($"[Recovery] Blocked: standing capsule would overlap nearby geometry at {recoveryRootPosition}. Staying ragdolled instead of launching the player upward.", this);
+                RequeueBlockedRecovery();
                 return;
             }
 
@@ -930,6 +1489,24 @@ namespace GroceryQuotaHorror.Player
             activeRagdoll.enabled = false;
             cameraFollowVelocity = Vector3.zero;
             RefreshCameraAttachment();
+            ClearImpactRecoveryVisuals();
+        }
+
+        private void RequeueBlockedRecovery()
+        {
+            recoveryPending = true;
+            recoverAtTime = Time.time + 0.25f;
+            if (impactRecovery.Active)
+            {
+                impactRecovery.StableHoldSeconds = 0f;
+                impactRecovery.EarliestRecoveryTime = Mathf.Max(impactRecovery.EarliestRecoveryTime, recoverAtTime);
+            }
+        }
+
+        private void ClearImpactRecoveryVisuals()
+        {
+            impactOverlay?.Clear(Balance != null ? Balance.ragdoll.impactOverlayFadeOutSeconds : 1.25f);
+            impactRecovery.Reset();
         }
 
         private bool TryResolveRecoveryRootPosition(Vector3 liveCenterOfMass, out Vector3 recoveryPosition)
@@ -1132,6 +1709,48 @@ namespace GroceryQuotaHorror.Player
             Instantiate(spawnableRagdollPrefab, spawnPosition, spawnRotation);
         }
 
+        private void HandleMonsterSpawnInput()
+        {
+            if (!Input.GetKeyDown(KeyCode.M))
+            {
+                return;
+            }
+
+            var content = GameRuntime.Content;
+            if (content == null || content.monsterPrefab == null)
+            {
+                Debug.LogWarning("[MonsterPrototype] Cannot spawn monster because GameRuntime.Content or monsterPrefab is missing.", this);
+                return;
+            }
+
+            var forward = playerCamera != null ? playerCamera.transform.forward : transform.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude < 0.01f)
+            {
+                forward = transform.forward;
+            }
+
+            forward.Normalize();
+            var spawnPosition = transform.position + forward * 4f;
+            spawnPosition.y = transform.position.y;
+            var monsterObject = Instantiate(content.monsterPrefab, spawnPosition, Quaternion.LookRotation(-forward, Vector3.up));
+            if (!monsterObject.TryGetComponent<MonsterController>(out var monster) || monster == null)
+            {
+                Debug.LogWarning("[MonsterPrototype] Spawned monster prefab has no MonsterController.", monsterObject);
+                return;
+            }
+
+            var definitionIndex = content.monsterPool.Count > 0 ? 0 : -1;
+            monster.Initialize(definitionIndex, content, Array.Empty<Transform>());
+            var networkObject = monsterObject.GetComponent<NetworkObject>();
+            if (networkObject != null && NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening && IsServer && !networkObject.IsSpawned)
+            {
+                networkObject.Spawn(true);
+            }
+
+            Debug.Log($"[MonsterPrototype] Spawned monster with M at {spawnPosition}.", monsterObject);
+        }
+
         private void SpawnPhysicsBall()
         {
             if (playerCamera == null || Balance == null)
@@ -1185,30 +1804,51 @@ namespace GroceryQuotaHorror.Player
                 return;
             }
 
-            if (!TryFindGrabbedRagdoll(out var body, out var ragdoll))
+            if (!TryFindGrabbedRagdoll(out var body, out var ragdoll, out var grabPoint))
             {
                 return;
             }
 
             grabbedBody = body;
             grabbedRagdoll = ragdoll;
+            grabbedLocalPoint = grabbedBody.transform.InverseTransformPoint(grabPoint);
             lastGrabbedTargetPosition = playerCamera.transform.position + playerCamera.transform.forward * Balance.interaction.grabbedHoldDistance;
             grabbedTargetVelocity = Vector3.zero;
             grabbedRagdoll.SetGrabbed(true);
+            SetGrabbedRagdollPlayerCollisionIgnored(true);
+            UpdateLooseBodyGrabTarget();
         }
 
-        private bool TryFindGrabbedRagdoll(out Rigidbody body, out SpawnableRagdoll ragdoll)
+        private void UpdateLooseBodyGrabTarget()
+        {
+            if (looseBody == null)
+            {
+                return;
+            }
+
+            if (grabbedBody == null)
+            {
+                looseBody.ClearGrabTarget();
+                return;
+            }
+
+            looseBody.SetGrabTarget(grabbedBody.transform.TransformPoint(grabbedLocalPoint));
+        }
+
+        private bool TryFindGrabbedRagdoll(out Rigidbody body, out SpawnableRagdoll ragdoll, out Vector3 grabPoint)
         {
             body = null;
             ragdoll = null;
+            grabPoint = Vector3.zero;
 
             if (playerCamera == null || Balance == null)
             {
                 return false;
             }
 
-            var hits = UnityEngine.Physics.RaycastAll(
+            var hits = UnityEngine.Physics.SphereCastAll(
                 playerCamera.transform.position,
+                0.22f,
                 playerCamera.transform.forward,
                 Balance.interaction.interactRange,
                 ~0,
@@ -1242,6 +1882,12 @@ namespace GroceryQuotaHorror.Player
                     continue;
                 }
 
+                grabPoint = hit.point;
+                if ((grabPoint - body.worldCenterOfMass).sqrMagnitude < 0.0001f)
+                {
+                    grabPoint = body.worldCenterOfMass;
+                }
+
                 return body != null;
             }
 
@@ -1252,6 +1898,7 @@ namespace GroceryQuotaHorror.Player
         {
             if (grabbedRagdoll != null)
             {
+                SetGrabbedRagdollPlayerCollisionIgnored(false);
                 grabbedRagdoll.SetGrabbed(false);
             }
 
@@ -1262,7 +1909,37 @@ namespace GroceryQuotaHorror.Player
 
             grabbedBody = null;
             grabbedRagdoll = null;
+            grabbedLocalPoint = Vector3.zero;
             grabbedTargetVelocity = Vector3.zero;
+            looseBody?.ClearGrabTarget();
+        }
+
+        private void SetGrabbedRagdollPlayerCollisionIgnored(bool ignored)
+        {
+            if (grabbedRagdoll == null)
+            {
+                return;
+            }
+
+            var playerColliders = GetComponentsInChildren<Collider>(true);
+            var grabbedColliders = grabbedRagdoll.GetComponentsInChildren<Collider>(true);
+            for (var i = 0; i < playerColliders.Length; i++)
+            {
+                var playerCollider = playerColliders[i];
+                if (playerCollider == null)
+                {
+                    continue;
+                }
+
+                for (var j = 0; j < grabbedColliders.Length; j++)
+                {
+                    var grabbedCollider = grabbedColliders[j];
+                    if (grabbedCollider != null && grabbedCollider != playerCollider)
+                    {
+                        UnityEngine.Physics.IgnoreCollision(playerCollider, grabbedCollider, ignored);
+                    }
+                }
+            }
         }
 
         private void TryInteract()
@@ -1454,55 +2131,12 @@ namespace GroceryQuotaHorror.Player
                 return;
             }
 
-            if (looseBody != null && looseBody.AttachCamera(playerCamera, cameraPitch, Balance))
+            if (looseBody != null && looseBody.AttachCamera(playerCamera, cameraPitch, transform.eulerAngles.y + visualLookYaw, Balance))
             {
                 cameraFollowVelocity = Vector3.zero;
                 ApplyRecoveryCameraBlend();
                 return;
             }
-
-            if (cameraAnchor == null)
-            {
-                var anchorObject = new GameObject("CameraAnchor");
-                cameraAnchor = anchorObject.transform;
-                cameraAnchor.SetParent(transform, false);
-                forceSnap = true;
-            }
-
-            if (playerCamera.transform.parent != cameraAnchor)
-            {
-                playerCamera.transform.SetParent(cameraAnchor, false);
-                playerCamera.transform.localPosition = Vector3.zero;
-                playerCamera.transform.localRotation = Quaternion.identity;
-                forceSnap = true;
-            }
-
-            var targetPosition = transform.TransformPoint(Balance.playerCamera.supportedLocalOffset);
-            var targetRotation = Quaternion.Euler(cameraPitch, transform.eulerAngles.y, 0f);
-            if (activeRagdoll != null && activeRagdoll.IsAvailable && activeRagdoll.TryGetCameraTargetPose(cameraPitch, out var ragdollTargetPosition, out var ragdollTargetRotation))
-            {
-                targetPosition = ragdollTargetPosition;
-                targetRotation = ragdollTargetRotation;
-            }
-
-            if (forceSnap || activeRagdoll == null || activeRagdoll.State != BodyDriveState.Limp)
-            {
-                cameraAnchor.SetPositionAndRotation(targetPosition, targetRotation);
-                cameraFollowVelocity = Vector3.zero;
-                ApplyRecoveryCameraBlend();
-                return;
-            }
-
-            cameraAnchor.position = Vector3.SmoothDamp(
-                cameraAnchor.position,
-                targetPosition,
-                ref cameraFollowVelocity,
-                1f / Mathf.Max(0.01f, Balance.playerCamera.limpFollowPositionSharpness));
-            cameraAnchor.rotation = Quaternion.Slerp(
-                cameraAnchor.rotation,
-                targetRotation,
-                1f - Mathf.Exp(-Mathf.Max(0.01f, Balance.playerCamera.limpFollowRotationSharpness) * Time.deltaTime));
-            ApplyRecoveryCameraBlend();
         }
 
         public void Interact(PlayerController player)

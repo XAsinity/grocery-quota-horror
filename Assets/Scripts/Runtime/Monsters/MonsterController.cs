@@ -18,15 +18,22 @@ namespace GroceryQuotaHorror.Monsters
         private GameContentDatabase contentDatabase;
         private List<Transform> patrolPoints;
         private int patrolIndex;
+        private int localDefinitionIndex = -1;
         private float attackCooldown;
 
         private bool IsOfflineLocalMode => NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening || NetworkBootstrap.LocalOfflineMode;
 
         public void Initialize(int configIndex, GameContentDatabase content, IReadOnlyList<Transform> scenePatrolPoints)
         {
-            definitionIndex.Value = configIndex;
+            localDefinitionIndex = configIndex;
+            if (!NetworkObject.IsSpawned || IsServer)
+            {
+                definitionIndex.Value = configIndex;
+            }
+
             contentDatabase = content;
             patrolPoints = new List<Transform>(scenePatrolPoints);
+            ApplyVisuals();
         }
 
         public override void OnNetworkSpawn()
@@ -41,13 +48,14 @@ namespace GroceryQuotaHorror.Monsters
 
         private void Update()
         {
-            if ((!IsServer && !IsOfflineLocalMode) || contentDatabase == null || definitionIndex.Value < 0 || GameRuntime.Balance == null)
+            var activeDefinitionIndex = GetActiveDefinitionIndex();
+            if ((!IsServer && !IsOfflineLocalMode) || contentDatabase == null || activeDefinitionIndex < 0 || GameRuntime.Balance == null)
             {
                 return;
             }
 
             attackCooldown -= Time.deltaTime;
-            var definition = contentDatabase.monsterPool[definitionIndex.Value];
+            var definition = contentDatabase.monsterPool[activeDefinitionIndex];
             var target = FindTarget(definition);
             if (target == null)
             {
@@ -62,7 +70,15 @@ namespace GroceryQuotaHorror.Monsters
 
             if (flat.magnitude <= definition.attackRange && attackCooldown <= 0f)
             {
-                target.ApplyDamage();
+                var attackCollider = GetComponent<Collider>();
+                if (!target.TryBeginPrototypeMonsterThrow(
+                    flat.normalized,
+                    target.transform.position + Vector3.up,
+                    attackCollider))
+                {
+                    target.ApplyDamage();
+                }
+
                 attackCooldown = definition.attackCooldown;
             }
         }
@@ -110,10 +126,17 @@ namespace GroceryQuotaHorror.Monsters
 
         private void ApplyVisuals()
         {
-            if (meshRenderer != null && contentDatabase != null && definitionIndex.Value >= 0)
+            var activeDefinitionIndex = GetActiveDefinitionIndex();
+            if (meshRenderer != null && contentDatabase != null && activeDefinitionIndex >= 0)
             {
-                meshRenderer.sharedMaterial.color = contentDatabase.monsterPool[definitionIndex.Value].tint;
+                meshRenderer.sharedMaterial.color = contentDatabase.monsterPool[activeDefinitionIndex].tint;
             }
+        }
+
+        private int GetActiveDefinitionIndex()
+        {
+            var index = definitionIndex.Value >= 0 ? definitionIndex.Value : localDefinitionIndex;
+            return contentDatabase != null && index >= 0 && index < contentDatabase.monsterPool.Count ? index : -1;
         }
     }
 }

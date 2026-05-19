@@ -6,6 +6,7 @@ namespace GroceryQuotaHorror.Data
     public static class GameRuntime
     {
         private const string DefaultProfilesResourcePath = "BalanceProfiles";
+        private const string SharedBalanceResourcePath = "BalanceProfiles/Prototype";
         private const string DefaultContentResourcePath = "GameContentDatabase";
 
         private static GameBalanceProfile currentBalance;
@@ -17,10 +18,14 @@ namespace GroceryQuotaHorror.Data
             {
                 if (currentBalance == null)
                 {
-                    var profiles = Resources.LoadAll<GameBalanceProfile>(DefaultProfilesResourcePath);
-                    if (profiles.Length > 0)
+                    currentBalance = Resources.Load<GameBalanceProfile>(SharedBalanceResourcePath);
+                    if (currentBalance == null)
                     {
-                        currentBalance = profiles[0];
+                        var profiles = Resources.LoadAll<GameBalanceProfile>(DefaultProfilesResourcePath);
+                        if (profiles.Length > 0)
+                        {
+                            currentBalance = profiles[0];
+                        }
                     }
                 }
 
@@ -41,7 +46,16 @@ namespace GroceryQuotaHorror.Data
             }
         }
 
-        public static GameBalanceProfile[] AllProfiles => Resources.LoadAll<GameBalanceProfile>(DefaultProfilesResourcePath);
+        public static GameBalanceProfile[] AllProfiles
+        {
+            get
+            {
+                var sharedProfile = Resources.Load<GameBalanceProfile>(SharedBalanceResourcePath);
+                return sharedProfile != null
+                    ? new[] { sharedProfile }
+                    : Resources.LoadAll<GameBalanceProfile>(DefaultProfilesResourcePath);
+            }
+        }
 
         public static event Action RuntimeSettingsChanged;
 
