@@ -93,8 +93,14 @@ MonoBehaviour:
     spawnVerticalOffset: 0.2
     jointSwingLimit: 25
     jointTwistLimit: 20
-    headLookTorque: 2.4
-    headLiftForce: 0.65
+    headLookTorque: 1.8
+    neckLookTorqueScale: 0.6
+    chestLookTorqueScale: 0
+    headLiftForce: 0.4
+    limpHeadAngularDamping: 0.32
+    limpNeckAngularDamping: 0.24
+    limpHeadMaxAngularSpeed: 1.1
+    limpNeckMaxAngularSpeed: 1.05
     recoveryAssistForce: 24
     ragdollHoldForce: 180
     ragdollHoldDamping: 4.5
@@ -187,6 +193,8 @@ MonoBehaviour:
     prototypeThrowUpwardVelocity: 14
     prototypeThrowImpulse: 85
     prototypeThrowSeverity: 1
+    prototypeThrowPauseSeconds: 1.25
+    prototypeThrowBackoffDistance: 1.5
   objectives:
     minQuotaValue: 12
     maxQuotaValue: 20

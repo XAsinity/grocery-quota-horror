@@ -265,9 +265,35 @@ namespace GroceryQuotaHorror.Player
             }
 
             var ragdoll = GameRuntime.Balance.ragdoll;
+            var headAngularSpeed = headBody.angularVelocity.magnitude;
+            var headTorqueScale = headAngularSpeed >= ragdoll.limpHeadMaxAngularSpeed
+                ? 0f
+                : 1f - Mathf.Clamp01(headAngularSpeed / Mathf.Max(0.01f, ragdoll.limpHeadMaxAngularSpeed));
             var torque = (transform.up * mouseX + transform.right * -mouseY) * ragdoll.headLookTorque;
-            headBody.AddTorque(torque, ForceMode.Acceleration);
-            headBody.AddForce(Vector3.up * (Mathf.Abs(mouseY) * ragdoll.headLiftForce), ForceMode.Acceleration);
+            if (headTorqueScale > 0.001f)
+            {
+                headBody.AddTorque(torque * headTorqueScale, ForceMode.Acceleration);
+                headBody.AddForce(Vector3.up * (Mathf.Abs(mouseY) * ragdoll.headLiftForce * headTorqueScale), ForceMode.Acceleration);
+            }
+
+            var neckBody = GetBoneRigidbody(HumanBodyBones.Neck);
+            if (neckBody != null)
+            {
+                var neckAngularSpeed = neckBody.angularVelocity.magnitude;
+                var neckTorqueScale = neckAngularSpeed >= ragdoll.limpNeckMaxAngularSpeed
+                    ? 0f
+                    : 1f - Mathf.Clamp01(neckAngularSpeed / Mathf.Max(0.01f, ragdoll.limpNeckMaxAngularSpeed));
+                if (neckTorqueScale > 0.001f)
+                {
+                    neckBody.AddTorque(torque * ragdoll.neckLookTorqueScale * neckTorqueScale, ForceMode.Acceleration);
+                }
+            }
+
+            var chestBody = GetBoneRigidbody(HumanBodyBones.UpperChest) ?? GetBoneRigidbody(HumanBodyBones.Chest);
+            if (chestBody != null)
+            {
+                chestBody.AddTorque(torque * ragdoll.chestLookTorqueScale, ForceMode.Acceleration);
+            }
         }
 
         public void ApplyLimpVelocity(Vector3 linearVelocity, Vector3 angularVelocity, Vector3 impulse)
@@ -375,6 +401,26 @@ namespace GroceryQuotaHorror.Player
                 body.AddForce(sharedImpulse * falloff, ForceMode.Impulse);
                 body.WakeUp();
             }
+        }
+
+        public bool TryAddLimpForceAtPoint(Vector3 force, Vector3 worldPoint, ForceMode mode = ForceMode.Force)
+        {
+            if (!ragdollBuilt || state != BodyDriveState.Limp || force.sqrMagnitude < 0.0001f)
+            {
+                return false;
+            }
+
+            if (!TryGetClosestRigidbody(worldPoint, out var targetBody) || targetBody == null || targetBody.isKinematic)
+            {
+                return false;
+            }
+
+            var ragdoll = GameRuntime.Balance != null ? GameRuntime.Balance.ragdoll : null;
+            var forcePointRadius = ragdoll != null ? ragdoll.impactForcePointRadius : 0.55f;
+            var forcePoint = targetBody.position + Vector3.ClampMagnitude(worldPoint - targetBody.position, forcePointRadius);
+            targetBody.AddForceAtPosition(force, forcePoint, mode);
+            targetBody.WakeUp();
+            return true;
         }
 
         public Rigidbody GetBoneRigidbody(HumanBodyBones bone)
@@ -1011,6 +1057,7 @@ namespace GroceryQuotaHorror.Player
 
         private void ApplyLimpState()
         {
+            var ragdoll = GameRuntime.Balance != null ? GameRuntime.Balance.ragdoll : null;
             foreach (var body in rigidBodies.Values)
             {
                 if (body == null)
@@ -1020,6 +1067,25 @@ namespace GroceryQuotaHorror.Player
 
                 body.linearDamping = 0.08f;
                 body.angularDamping = 0.04f;
+
+                var bone = GetBoneForRigidbody(body);
+                if (ragdoll == null || bone == null)
+                {
+                    continue;
+                }
+
+                if (bone == HumanBodyBones.Head)
+                {
+                    body.angularDamping = Mathf.Max(body.angularDamping, ragdoll.limpHeadAngularDamping);
+                    body.angularVelocity = Vector3.ClampMagnitude(body.angularVelocity * 0.9f, ragdoll.limpHeadMaxAngularSpeed);
+                    continue;
+                }
+
+                if (bone == HumanBodyBones.Neck)
+                {
+                    body.angularDamping = Mathf.Max(body.angularDamping, ragdoll.limpNeckAngularDamping);
+                    body.angularVelocity = Vector3.ClampMagnitude(body.angularVelocity * 0.92f, ragdoll.limpNeckMaxAngularSpeed);
+                }
             }
         }
 

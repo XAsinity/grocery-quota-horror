@@ -19,6 +19,7 @@ namespace GroceryQuotaHorror.Monsters
         private List<Transform> patrolPoints;
         private int patrolIndex;
         private int localDefinitionIndex = -1;
+        private float pausedUntil;
         private float attackCooldown;
 
         private bool IsOfflineLocalMode => NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening || NetworkBootstrap.LocalOfflineMode;
@@ -55,6 +56,11 @@ namespace GroceryQuotaHorror.Monsters
             }
 
             attackCooldown -= Time.deltaTime;
+            if (Time.time < pausedUntil)
+            {
+                return;
+            }
+
             var definition = contentDatabase.monsterPool[activeDefinitionIndex];
             var target = FindTarget(definition);
             if (target == null)
@@ -63,7 +69,8 @@ namespace GroceryQuotaHorror.Monsters
                 return;
             }
 
-            var flat = target.transform.position - transform.position;
+            var targetPosition = target.AiTargetPosition;
+            var flat = targetPosition - transform.position;
             flat.y = 0f;
             transform.position += flat.normalized * definition.moveSpeed * Time.deltaTime;
             transform.forward = Vector3.Lerp(transform.forward, flat.normalized, GameRuntime.Balance.monster.turnSmoothing);
@@ -71,15 +78,21 @@ namespace GroceryQuotaHorror.Monsters
             if (flat.magnitude <= definition.attackRange && attackCooldown <= 0f)
             {
                 var attackCollider = GetComponent<Collider>();
-                if (!target.TryBeginPrototypeMonsterThrow(
+                var didThrow = target.TryBeginPrototypeMonsterThrow(
                     flat.normalized,
-                    target.transform.position + Vector3.up,
-                    attackCollider))
+                    targetPosition + Vector3.up,
+                    attackCollider);
+
+                if (didThrow)
+                {
+                    PauseAfterThrow(flat.normalized);
+                    attackCooldown = Mathf.Max(definition.attackCooldown, GameRuntime.Balance.monster.prototypeThrowPauseSeconds);
+                }
+                else
                 {
                     target.ApplyDamage();
+                    attackCooldown = definition.attackCooldown;
                 }
-
-                attackCooldown = definition.attackCooldown;
             }
         }
 
@@ -95,7 +108,7 @@ namespace GroceryQuotaHorror.Monsters
                     continue;
                 }
 
-                var distance = Vector3.Distance(transform.position, players[i].transform.position);
+                var distance = Vector3.Distance(transform.position, players[i].AiTargetPosition);
                 if (distance < bestDistance && distance <= definition.chaseRange)
                 {
                     bestDistance = distance;
@@ -104,6 +117,18 @@ namespace GroceryQuotaHorror.Monsters
             }
 
             return best;
+        }
+
+        private void PauseAfterThrow(Vector3 throwDirection)
+        {
+            var tuning = GameRuntime.Balance.monster;
+            pausedUntil = Time.time + Mathf.Max(0f, tuning.prototypeThrowPauseSeconds);
+
+            var backoff = Vector3.ProjectOnPlane(throwDirection, Vector3.up);
+            if (backoff.sqrMagnitude > 0.0001f)
+            {
+                transform.position -= backoff.normalized * Mathf.Max(0f, tuning.prototypeThrowBackoffDistance);
+            }
         }
 
         private void Patrol(float speed)

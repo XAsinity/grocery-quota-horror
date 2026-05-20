@@ -59,6 +59,54 @@ namespace GroceryQuotaHorror.Player
             public float SourceMass { get; }
         }
 
+        private enum RagdollCause
+        {
+            Manual,
+            Impact,
+            MonsterThrow
+        }
+
+        private readonly struct RagdollRequest
+        {
+            public RagdollRequest(
+                RagdollCause cause,
+                Vector3 linearVelocity,
+                Vector3 angularVelocity,
+                Vector3 impulse,
+                Vector3 impactPoint,
+                bool autoRecover,
+                float recoveryDelaySeconds,
+                float impactSeverity01,
+                bool applyCooldown,
+                float cooldownSeconds,
+                bool resetExistingLimpVelocity)
+            {
+                Cause = cause;
+                LinearVelocity = linearVelocity;
+                AngularVelocity = angularVelocity;
+                Impulse = impulse;
+                ImpactPoint = impactPoint;
+                AutoRecover = autoRecover;
+                RecoveryDelaySeconds = recoveryDelaySeconds;
+                ImpactSeverity01 = impactSeverity01;
+                ApplyCooldown = applyCooldown;
+                CooldownSeconds = cooldownSeconds;
+                ResetExistingLimpVelocity = resetExistingLimpVelocity;
+            }
+
+            public RagdollCause Cause { get; }
+            public Vector3 LinearVelocity { get; }
+            public Vector3 AngularVelocity { get; }
+            public Vector3 Impulse { get; }
+            public Vector3 ImpactPoint { get; }
+            public bool AutoRecover { get; }
+            public float RecoveryDelaySeconds { get; }
+            public float ImpactSeverity01 { get; }
+            public bool ApplyCooldown { get; }
+            public float CooldownSeconds { get; }
+            public bool ResetExistingLimpVelocity { get; }
+        }
+
         private readonly NetworkVariable<bool> isDowned = new();
         private readonly NetworkVariable<bool> isHidden = new();
 
@@ -105,6 +153,7 @@ namespace GroceryQuotaHorror.Player
         private float recoverAtTime;
         private float nextAllowedImpactRagdollTime;
         private float nextRecoveryStabilityDebugAt;
+        private int aiDragPossessionCount;
         private const float GroundSnapSkin = 0f;
         private const float GroundSnapProbeHeight = 2f;
         private const float GroundSnapProbeDistance = 8f;
@@ -128,13 +177,22 @@ namespace GroceryQuotaHorror.Player
         public bool IsHidden => isHidden.Value;
         public ItemPickup HeldItem => heldItem;
         public string Prompt => IsDowned ? "Revive teammate" : string.Empty;
+        public bool IsRagdolled => looseBody != null && looseBody.IsLimp || IsActiveRagdollLimp;
+        public Vector3 CurrentBodyPosition => TryGetLiveRagdollPose(out var position, out _) ? position : transform.position;
+        public Quaternion CurrentBodyRotation => TryGetLiveRagdollPose(out _, out var rotation) ? rotation : transform.rotation;
+        public Vector3 AiTargetPosition => CurrentBodyPosition;
+        public bool IsAiDragPossessed => aiDragPossessionCount > 0;
 
         private bool HasLocalAuthority => !IsSpawned || IsOwner;
         private GameBalanceProfile Balance => GameRuntime.Balance;
+        private bool IsActiveRagdollLimp => activeRagdoll != null &&
+                                            activeRagdoll.enabled &&
+                                            activeRagdoll.IsAvailable &&
+                                            activeRagdoll.State == BodyDriveState.Limp;
 
         public bool TryBeginImpactRagdoll(Vector3 impactVelocity, Vector3 impactPoint, Collider source, float sourceMassOverride = -1f)
         {
-            if (Balance == null || IsDowned || Time.time < nextAllowedImpactRagdollTime)
+            if (Balance == null || IsDowned)
             {
                 return false;
             }
@@ -162,7 +220,6 @@ namespace GroceryQuotaHorror.Player
                 }
             }
 
-            nextAllowedImpactRagdollTime = Time.time + ragdoll.impactCooldown;
             var sourceMass = sourceMassOverride > 0f ? sourceMassOverride : source != null && source.attachedRigidbody != null ? source.attachedRigidbody.mass : 1f;
             var sourceMassFactor = Mathf.Clamp(Mathf.Sqrt(Mathf.Max(0.01f, sourceMass) / Mathf.Max(1f, ragdoll.impactMassReference)), 0.18f, 2.2f);
             var localImpulseMassFactor = Mathf.Clamp(sourceMassFactor, 0.55f, 2.2f);
@@ -177,13 +234,23 @@ namespace GroceryQuotaHorror.Player
             var wholeBodyVelocity = transferredVelocity * wholeBodyVelocityShare;
             var severity01 = CalculateImpactRecoverySeverity(speed, sourceMass, impulseMagnitude, transferredVelocity.magnitude, ragdoll);
             var recoveryDelay = Mathf.Lerp(ragdoll.impactRecoveryMinDelay, ragdoll.impactRecoveryMaxDelay, severity01);
-            BeginLimpRagdoll(wholeBodyVelocity, angularVelocity, impulse, resolvedImpactPoint, true, recoveryDelay, severity01);
-            return true;
+            return TryBeginRagdoll(new RagdollRequest(
+                RagdollCause.Impact,
+                wholeBodyVelocity,
+                angularVelocity,
+                impulse,
+                resolvedImpactPoint,
+                true,
+                recoveryDelay,
+                severity01,
+                true,
+                ragdoll.impactCooldown,
+                false));
         }
 
         public bool TryBeginPrototypeMonsterThrow(Vector3 throwDirection, Vector3 impactPoint, Collider source)
         {
-            if (Balance == null || IsDowned || Time.time < nextAllowedImpactRagdollTime)
+            if (Balance == null || IsDowned)
             {
                 return false;
             }
@@ -206,10 +273,24 @@ namespace GroceryQuotaHorror.Player
             var angularVelocity = rootBody != null ? rootBody.angularVelocity + Vector3.Cross(Vector3.up, flatDirection) * 6f : Vector3.Cross(Vector3.up, flatDirection) * 6f;
             var severity01 = Mathf.Clamp01(monster.prototypeThrowSeverity);
             var recoveryDelay = Mathf.Lerp(Balance.ragdoll.impactRecoveryMinDelay, Balance.ragdoll.impactRecoveryMaxDelay, severity01);
-            nextAllowedImpactRagdollTime = Time.time + Balance.ragdoll.impactCooldown;
-            BeginLimpRagdoll(throwVelocity, angularVelocity, throwImpulse, resolvedImpactPoint, true, recoveryDelay, severity01);
-            Debug.Log($"[MonsterPrototype] Monster throw applied velocity={throwVelocity} impulse={throwImpulse.magnitude:0.0} severity={severity01:0.00}.", this);
-            return true;
+            var didBeginRagdoll = TryBeginRagdoll(new RagdollRequest(
+                RagdollCause.MonsterThrow,
+                throwVelocity,
+                angularVelocity,
+                throwImpulse,
+                resolvedImpactPoint,
+                true,
+                recoveryDelay,
+                severity01,
+                true,
+                Balance.ragdoll.impactCooldown,
+                true));
+            if (didBeginRagdoll)
+            {
+                Debug.Log($"[MonsterPrototype] Monster throw applied velocity={throwVelocity} impulse={throwImpulse.magnitude:0.0} severity={severity01:0.00}.", this);
+            }
+
+            return didBeginRagdoll;
         }
 
         private static float CalculateImpactRecoverySeverity(float speed, float sourceMass, float impulseMagnitude, float transferredSpeed, RagdollTuning ragdoll)
@@ -432,6 +513,35 @@ namespace GroceryQuotaHorror.Player
             var force = desiredAcceleration * ragdoll.ragdollHoldForce - grabbedBody.GetPointVelocity(grabbedPoint) * ragdoll.ragdollHoldDamping;
             grabbedBody.AddForceAtPosition(Vector3.ClampMagnitude(force, ragdoll.ragdollHeldMaxForce), grabbedPoint, ForceMode.Acceleration);
             grabbedBody.angularVelocity *= 0.94f;
+        }
+
+        public bool TryGetLiveBodyPosition(out Vector3 position)
+        {
+            if (TryGetLiveRagdollPose(out position, out _))
+            {
+                return true;
+            }
+
+            position = transform.position;
+            return false;
+        }
+
+        public bool TryGetLiveRagdollPose(out Vector3 position, out Quaternion rotation)
+        {
+            position = transform.position;
+            rotation = transform.rotation;
+            if (activeRagdoll == null ||
+                !activeRagdoll.enabled ||
+                !activeRagdoll.IsAvailable ||
+                activeRagdoll.State != BodyDriveState.Limp ||
+                !activeRagdoll.TryGetCurrentRagdollCenterOfMass(out var liveCenterOfMass))
+            {
+                return false;
+            }
+
+            position = liveCenterOfMass;
+            rotation = activeRagdoll.GetCurrentRagdollYaw();
+            return true;
         }
 
         private void LateUpdate()
@@ -1190,42 +1300,7 @@ namespace GroceryQuotaHorror.Player
 
         private void ToggleBodyState()
         {
-            if (activeRagdoll == null)
-            {
-                activeRagdoll = GetComponent<ActiveRagdollController>();
-            }
-
-            if (activeRagdoll == null)
-            {
-                if (looseBody != null && looseBody.IsLimp)
-                {
-                    BeginDelayedRecovery();
-                }
-                else
-                {
-                    looseBody?.EnterLimpMode();
-                }
-
-                return;
-            }
-
-            activeRagdoll.enabled = true;
-            if (!activeRagdoll.EnsureInitialized())
-            {
-                activeRagdoll.enabled = false;
-                if (looseBody != null && looseBody.IsLimp)
-                {
-                    BeginDelayedRecovery();
-                }
-                else
-                {
-                    looseBody?.EnterLimpMode();
-                }
-
-                return;
-            }
-
-            if (activeRagdoll.State == BodyDriveState.Limp)
+            if (IsRagdolled)
             {
                 BeginDelayedRecovery();
                 return;
@@ -1233,16 +1308,37 @@ namespace GroceryQuotaHorror.Player
 
             var currentVelocity = rootBody != null ? rootBody.linearVelocity : Vector3.zero;
             var currentAngularVelocity = rootBody != null ? rootBody.angularVelocity : Vector3.zero;
-            BeginLimpRagdoll(currentVelocity, currentAngularVelocity, transform.forward * Mathf.Max(1.5f, currentVelocity.magnitude * 0.35f), transform.position + Vector3.up, false, ManualRecoveryDelaySeconds);
+            TryBeginRagdoll(new RagdollRequest(
+                RagdollCause.Manual,
+                currentVelocity,
+                currentAngularVelocity,
+                transform.forward * Mathf.Max(1.5f, currentVelocity.magnitude * 0.35f),
+                transform.position + Vector3.up,
+                false,
+                ManualRecoveryDelaySeconds,
+                0f,
+                false,
+                0f,
+                false));
         }
 
-        private void BeginLimpRagdoll(Vector3 linearVelocity, Vector3 angularVelocity, Vector3 impulse, Vector3 impactPoint, bool autoRecover, float recoveryDelaySeconds)
+        private bool TryBeginRagdoll(in RagdollRequest request)
         {
-            BeginLimpRagdoll(linearVelocity, angularVelocity, impulse, impactPoint, autoRecover, recoveryDelaySeconds, 0f);
-        }
+            if (Balance == null || IsDowned)
+            {
+                return false;
+            }
 
-        private void BeginLimpRagdoll(Vector3 linearVelocity, Vector3 angularVelocity, Vector3 impulse, Vector3 impactPoint, bool autoRecover, float recoveryDelaySeconds, float impactSeverity01)
-        {
+            if (request.ApplyCooldown && Time.time < nextAllowedImpactRagdollTime)
+            {
+                return false;
+            }
+
+            if (request.ApplyCooldown)
+            {
+                nextAllowedImpactRagdollTime = Time.time + Mathf.Max(0f, request.CooldownSeconds);
+            }
+
             if (activeRagdoll == null)
             {
                 activeRagdoll = GetComponent<ActiveRagdollController>();
@@ -1262,34 +1358,40 @@ namespace GroceryQuotaHorror.Player
                     recoveryPending = false;
                     EnsureImpactCollisionRelays();
                     SetSupportedLimbCollidersEnabled(true);
-                    if (wasAlreadyLimp)
-                    {
-                        activeRagdoll.AddLimpImpulseAtPoint(impulse, impactPoint);
-                    }
-                    else
-                    {
-                        activeRagdoll.ApplyLimpImpact(linearVelocity, angularVelocity, impulse, impactPoint);
-                    }
-
+                    ApplyRagdollRequest(request, wasAlreadyLimp);
                     SetPhysicalRootEnabled(false);
                     cameraFollowVelocity = Vector3.zero;
                     RefreshCameraAttachment(true);
-                    if (autoRecover)
+                    if (request.AutoRecover)
                     {
-                        BeginImpactRecovery(impactSeverity01, recoveryDelaySeconds);
+                        BeginImpactRecovery(request.ImpactSeverity01, request.RecoveryDelaySeconds);
                     }
 
-                    return;
+                    return true;
                 }
 
                 activeRagdoll.enabled = false;
             }
 
             looseBody?.EnterLimpMode();
-            if (autoRecover)
+            if (request.AutoRecover)
             {
-                BeginImpactRecovery(impactSeverity01, recoveryDelaySeconds);
+                BeginImpactRecovery(request.ImpactSeverity01, request.RecoveryDelaySeconds);
             }
+
+            return looseBody != null && looseBody.IsLimp;
+        }
+
+        private void ApplyRagdollRequest(in RagdollRequest request, bool wasAlreadyLimp)
+        {
+            var shouldResetExistingLimpVelocity = request.ResetExistingLimpVelocity || request.Cause == RagdollCause.MonsterThrow;
+            if (wasAlreadyLimp && !shouldResetExistingLimpVelocity)
+            {
+                activeRagdoll.AddLimpImpulseAtPoint(request.Impulse, request.ImpactPoint);
+                return;
+            }
+
+            activeRagdoll.ApplyLimpImpact(request.LinearVelocity, request.AngularVelocity, request.Impulse, request.ImpactPoint);
         }
 
         private void BeginDelayedRecovery()
@@ -1349,6 +1451,11 @@ namespace GroceryQuotaHorror.Player
                 return;
             }
 
+            if (IsAiDragPossessed)
+            {
+                return;
+            }
+
             if (impactRecovery.Active)
             {
                 if (!IsImpactRecoveryReady())
@@ -1378,7 +1485,7 @@ namespace GroceryQuotaHorror.Player
 
         private bool IsImpactRecoveryReady()
         {
-            if (Balance == null || Time.time < impactRecovery.EarliestRecoveryTime)
+            if (Balance == null || IsAiDragPossessed || Time.time < impactRecovery.EarliestRecoveryTime)
             {
                 return false;
             }
@@ -1507,6 +1614,33 @@ namespace GroceryQuotaHorror.Player
         {
             impactOverlay?.Clear(Balance != null ? Balance.ragdoll.impactOverlayFadeOutSeconds : 1.25f);
             impactRecovery.Reset();
+        }
+
+        public void BeginAiDragPossession()
+        {
+            aiDragPossessionCount++;
+            if (impactRecovery.Active)
+            {
+                impactRecovery.StableHoldSeconds = 0f;
+            }
+        }
+
+        public void EndAiDragPossession()
+        {
+            aiDragPossessionCount = Mathf.Max(0, aiDragPossessionCount - 1);
+            if (impactRecovery.Active)
+            {
+                impactRecovery.StableHoldSeconds = 0f;
+            }
+        }
+
+        public bool TryApplyAiDragForce(Vector3 force, Vector3 worldPoint, ForceMode mode = ForceMode.Force)
+        {
+            return activeRagdoll != null &&
+                   activeRagdoll.enabled &&
+                   activeRagdoll.IsAvailable &&
+                   activeRagdoll.State == BodyDriveState.Limp &&
+                   activeRagdoll.TryAddLimpForceAtPoint(force, worldPoint, mode);
         }
 
         private bool TryResolveRecoveryRootPosition(Vector3 liveCenterOfMass, out Vector3 recoveryPosition)

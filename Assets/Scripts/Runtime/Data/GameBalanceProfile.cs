@@ -243,9 +243,21 @@ namespace GroceryQuotaHorror.Data
         [Tooltip("Twist angle limit used when runtime ragdoll joints are built.")]
         public float jointTwistLimit = 20f;
         [Tooltip("Torque applied to the head when looking around while limp.")]
-        public float headLookTorque = 2.4f;
+        public float headLookTorque = 1.8f;
+        [Tooltip("Fraction of limp look torque also applied to the neck so head turns feel less jelly-like.")]
+        public float neckLookTorqueScale = 0.6f;
+        [Tooltip("Fraction of limp look torque also applied to the upper chest so mouse look has a little body support.")]
+        public float chestLookTorqueScale = 0f;
         [Tooltip("Upward assist force applied to the head while looking while limp.")]
-        public float headLiftForce = 0.65f;
+        public float headLiftForce = 0.4f;
+        [Tooltip("Extra angular damping applied to the head while limp so it settles faster after mouse wiggle.")]
+        public float limpHeadAngularDamping = 0.32f;
+        [Tooltip("Extra angular damping applied to the neck while limp so the head chain feels a bit stronger without going stiff.")]
+        public float limpNeckAngularDamping = 0.24f;
+        [Tooltip("Maximum angular speed allowed for the head while limp before extra mouse-look torque is suppressed.")]
+        public float limpHeadMaxAngularSpeed = 1.1f;
+        [Tooltip("Maximum angular speed allowed for the neck while limp before extra mouse-look torque is suppressed.")]
+        public float limpNeckMaxAngularSpeed = 1.05f;
         [Tooltip("Assist force used by active ragdoll recovery behavior.")]
         public float recoveryAssistForce = 24f;
 
@@ -453,6 +465,10 @@ namespace GroceryQuotaHorror.Data
         public float prototypeThrowImpulse = 85f;
         [Tooltip("Recovery/knockout severity used for the prototype monster throw.")]
         public float prototypeThrowSeverity = 1f;
+        [Tooltip("Seconds the monster pauses after throwing so it visually releases possession before chasing again.")]
+        public float prototypeThrowPauseSeconds = 1.25f;
+        [Tooltip("Distance the monster steps backward after throwing the player.")]
+        public float prototypeThrowBackoffDistance = 1.5f;
     }
 
     [Serializable]
