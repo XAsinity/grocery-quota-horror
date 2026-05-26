@@ -158,7 +158,7 @@ namespace GroceryQuotaHorror.Player
             return true;
         }
 
-        public void RestoreReferenceBonePositions()
+        public void RestoreReferenceBoneTransforms()
         {
             foreach (var pair in basePositions)
             {
@@ -168,6 +168,10 @@ namespace GroceryQuotaHorror.Player
                 }
 
                 bone.localPosition = pair.Value;
+                if (baseRotations.TryGetValue(pair.Key, out var baseRotation))
+                {
+                    bone.localRotation = baseRotation;
+                }
             }
         }
 
@@ -202,7 +206,7 @@ namespace GroceryQuotaHorror.Player
             ResetArmSimulation();
             if (snapUpright)
             {
-                RestoreReferenceBonePositions();
+                RestoreReferenceBoneTransforms();
                 postRagdollStartRotations.Clear();
                 postRagdollStartPositions.Clear();
             }
@@ -336,7 +340,7 @@ namespace GroceryQuotaHorror.Player
                     mode = LooseBodyMode.Supported;
                     visualCollapse = 0f;
                     ResetArmSimulation();
-                    RestoreReferenceBonePositions();
+                    RestoreReferenceBoneTransforms();
                     ApplyModelCollapseOffset();
                 }
 

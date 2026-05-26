@@ -153,6 +153,10 @@ namespace GroceryQuotaHorror.Player
         private float recoverAtTime;
         private float nextAllowedImpactRagdollTime;
         private float nextRecoveryStabilityDebugAt;
+        private int nextRecoveryHandoffSequence;
+        private int lastRequestedRecoveryHandoffSequence;
+        private int lastServerRecoveryHandoffSequence;
+        private int lastHandledRecoveryCorrectionSequence;
         private int aiDragPossessionCount;
         private const float GroundSnapSkin = 0f;
         private const float GroundSnapProbeHeight = 2f;
@@ -172,6 +176,12 @@ namespace GroceryQuotaHorror.Player
         private const float PostRecoveryLogInterval = 0.15f;
         private const float PostRecoveryDriftWarnDistance = 0.35f;
         private const float RecoveryStabilityDebugInterval = 1f;
+        private const float ImpactRecoveryStabilityGraceSeconds = 2.25f;
+        private const float ImpactRecoveryAngularGraceMultiplier = 2.25f;
+        private const float NetworkRecoveryMaxRootComHorizontalDistance = 1.75f;
+        private const float NetworkRecoveryMaxRootGroundDelta = 0.75f;
+        private const float NetworkRecoveryMaxHostRootDistance = 80f;
+        private const float NetworkRecoveryCorrectionDistance = 0.25f;
 
         public bool IsDowned => isDowned.Value;
         public bool IsHidden => isHidden.Value;
@@ -1502,16 +1512,31 @@ namespace GroceryQuotaHorror.Player
             }
 
             var ragdoll = Balance.ragdoll;
-            var stable =
+            var hasSettledLinearMotion =
                 stats.AverageLinearSpeed <= ragdoll.impactRecoveryMaxAverageSpeed &&
                 stats.MaxLinearSpeed <= ragdoll.impactRecoveryMaxBodySpeed &&
+                stats.CenterOfMassDriftSpeed <= ragdoll.impactRecoveryMaxComDriftSpeed;
+            var hasGroundSupport = HasRecoveryGroundSupport(stats.CenterOfMass, ragdoll.impactRecoveryGroundProbeDistance);
+            var stable =
+                hasSettledLinearMotion &&
                 stats.AverageAngularSpeed <= ragdoll.impactRecoveryMaxAngularSpeed &&
-                stats.CenterOfMassDriftSpeed <= ragdoll.impactRecoveryMaxComDriftSpeed &&
-                HasRecoveryGroundSupport(stats.CenterOfMass, ragdoll.impactRecoveryGroundProbeDistance);
+                hasGroundSupport;
+            var graceReady =
+                hasSettledLinearMotion &&
+                hasGroundSupport &&
+                stats.AverageAngularSpeed <= ragdoll.impactRecoveryMaxAngularSpeed * ImpactRecoveryAngularGraceMultiplier &&
+                Time.time >= impactRecovery.EarliestRecoveryTime + ImpactRecoveryStabilityGraceSeconds;
 
             impactRecovery.StableHoldSeconds = stable
                 ? impactRecovery.StableHoldSeconds + Time.deltaTime
                 : 0f;
+            if (graceReady)
+            {
+                Debug.Log($"[Recovery] Grace recovery allowed avgAngular={stats.AverageAngularSpeed:0.00}/{ragdoll.impactRecoveryMaxAngularSpeed:0.00} after waiting {Time.time - impactRecovery.EarliestRecoveryTime:0.00}s past earliest recovery.", this);
+                impactRecovery.StableHoldSeconds = ragdoll.impactRecoveryStableHoldSeconds;
+                return true;
+            }
+
             if (!stable && Time.time >= nextRecoveryStabilityDebugAt)
             {
                 Debug.Log($"[Recovery] Waiting for stability avgSpeed={stats.AverageLinearSpeed:0.00}/{ragdoll.impactRecoveryMaxAverageSpeed:0.00} maxSpeed={stats.MaxLinearSpeed:0.00}/{ragdoll.impactRecoveryMaxBodySpeed:0.00} avgAngular={stats.AverageAngularSpeed:0.00}/{ragdoll.impactRecoveryMaxAngularSpeed:0.00} comDrift={stats.CenterOfMassDriftSpeed:0.00}/{ragdoll.impactRecoveryMaxComDriftSpeed:0.00}.", this);
@@ -1577,26 +1602,189 @@ namespace GroceryQuotaHorror.Player
                 return;
             }
 
+            var sequence = ++nextRecoveryHandoffSequence;
+            lastRequestedRecoveryHandoffSequence = sequence;
+            ApplyRecoveryHandoff(recoveryRootPosition, recoveryRotation, true, "predicted");
+            SendRecoveryHandoffForHostValidation(recoveryRootPosition, recoveryRotation.eulerAngles.y, liveCenterOfMass, sequence);
+        }
+
+        private void ApplyRecoveryHandoff(Vector3 recoveryRootPosition, Quaternion recoveryRotation, bool finalizeRagdoll, string source)
+        {
             BeginRecoveryCameraBlend();
             visualLookYaw = 0f;
-            activeRagdoll.FreezeRagdollPoseForRecovery(recoveryRootPosition, recoveryRotation);
             targetYaw = recoveryRotation.eulerAngles.y;
+
+            if (finalizeRagdoll && activeRagdoll != null && activeRagdoll.enabled && activeRagdoll.IsAvailable)
+            {
+                activeRagdoll.FreezeRagdollPoseForRecovery(recoveryRootPosition, recoveryRotation);
+            }
+
+            transform.SetPositionAndRotation(recoveryRootPosition, recoveryRotation);
             SetPhysicalRootEnabled(true);
-            transform.position = recoveryRootPosition;
+            transform.SetPositionAndRotation(recoveryRootPosition, recoveryRotation);
             if (rootBody != null)
             {
                 rootBody.position = recoveryRootPosition;
+                rootBody.rotation = recoveryRotation;
+                rootBody.linearVelocity = Vector3.zero;
+                rootBody.angularVelocity = Vector3.zero;
             }
 
             ignoreGroundContactsUntil = Time.time + 0.05f;
-            BeginPostRecoveryWatch(recoveryRootPosition, recoveryRotation);
-            activeRagdoll.ReleaseRuntimeRagdollComponents();
-            SetSupportedLimbCollidersEnabled(false);
+            if (HasLocalAuthority)
+            {
+                BeginPostRecoveryWatch(recoveryRootPosition, recoveryRotation);
+            }
+
+            if (finalizeRagdoll)
+            {
+                activeRagdoll?.ReleaseRuntimeRagdollComponents();
+                SetSupportedLimbCollidersEnabled(false);
+                if (activeRagdoll != null)
+                {
+                    activeRagdoll.enabled = false;
+                }
+
+                ClearImpactRecoveryVisuals();
+            }
+
             looseBody?.ResetAfterRagdoll(physicalCollider, true);
-            activeRagdoll.enabled = false;
             cameraFollowVelocity = Vector3.zero;
             RefreshCameraAttachment();
-            ClearImpactRecoveryVisuals();
+            Debug.Log($"[Recovery] Applied {source} handoff root={recoveryRootPosition} yaw={recoveryRotation.eulerAngles.y:0.0}.", this);
+        }
+
+        private void SendRecoveryHandoffForHostValidation(Vector3 recoveryRootPosition, float yaw, Vector3 liveCenterOfMass, int sequence)
+        {
+            if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening)
+            {
+                return;
+            }
+
+            if (IsServer)
+            {
+                lastServerRecoveryHandoffSequence = Mathf.Max(lastServerRecoveryHandoffSequence, sequence);
+                return;
+            }
+
+            RequestRecoveryHandoffServerRpc(recoveryRootPosition, yaw, liveCenterOfMass, sequence);
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void RequestRecoveryHandoffServerRpc(Vector3 requestedRoot, float requestedYaw, Vector3 submittedCenterOfMass, int sequence, RpcParams rpcParams = default)
+        {
+            if (!IsServer || rpcParams.Receive.SenderClientId != OwnerClientId)
+            {
+                return;
+            }
+
+            if (sequence <= lastServerRecoveryHandoffSequence)
+            {
+                Debug.LogWarning($"[Recovery] Ignored stale recovery handoff sequence={sequence} last={lastServerRecoveryHandoffSequence} from client={OwnerClientId}.", this);
+                return;
+            }
+
+            lastServerRecoveryHandoffSequence = sequence;
+            var accepted = TryValidateRecoveryHandoff(requestedRoot, requestedYaw, submittedCenterOfMass, out var approvedRoot, out var approvedYaw, out var reason);
+            var approvedRotation = Quaternion.Euler(0f, approvedYaw, 0f);
+            ApplyRecoveryHandoff(approvedRoot, approvedRotation, false, accepted ? "host-approved" : "host-corrected");
+            ConfirmRecoveryHandoffClientRpc(sequence, accepted, approvedRoot, approvedYaw);
+
+            if (accepted)
+            {
+                Debug.Log($"[Recovery] Host approved recovery sequence={sequence} client={OwnerClientId} root={approvedRoot} yaw={approvedYaw:0.0}.", this);
+            }
+            else
+            {
+                Debug.LogWarning($"[Recovery] Host corrected recovery sequence={sequence} client={OwnerClientId} reason={reason} requested={requestedRoot} approved={approvedRoot}.", this);
+            }
+        }
+
+        [Rpc(SendTo.Owner)]
+        private void ConfirmRecoveryHandoffClientRpc(int sequence, bool accepted, Vector3 approvedRoot, float approvedYaw)
+        {
+            if (!IsOwner || sequence < lastRequestedRecoveryHandoffSequence || sequence <= lastHandledRecoveryCorrectionSequence)
+            {
+                return;
+            }
+
+            lastHandledRecoveryCorrectionSequence = sequence;
+            var approvedRotation = Quaternion.Euler(0f, approvedYaw, 0f);
+            var correctionDistance = Vector3.Distance(transform.position, approvedRoot);
+            var yawDelta = Quaternion.Angle(transform.rotation, approvedRotation);
+            if (accepted && correctionDistance <= NetworkRecoveryCorrectionDistance && yawDelta <= 1f)
+            {
+                Debug.Log($"[Recovery] Host confirmed recovery sequence={sequence} root={approvedRoot} yaw={approvedYaw:0.0}.", this);
+                return;
+            }
+
+            ApplyRecoveryHandoff(approvedRoot, approvedRotation, false, accepted ? "host-confirmed-correction" : "host-rejected-correction");
+            if (accepted)
+            {
+                Debug.Log($"[Recovery] Host confirmation adjusted recovery sequence={sequence} distance={correctionDistance:0.000} yawDelta={yawDelta:0.0}.", this);
+            }
+            else
+            {
+                Debug.LogWarning($"[Recovery] Host rejected predicted recovery sequence={sequence}; corrected to root={approvedRoot} yaw={approvedYaw:0.0}.", this);
+            }
+        }
+
+        private bool TryValidateRecoveryHandoff(Vector3 requestedRoot, float requestedYaw, Vector3 submittedCenterOfMass, out Vector3 approvedRoot, out float approvedYaw, out string reason)
+        {
+            approvedRoot = transform.position;
+            approvedYaw = transform.eulerAngles.y;
+            reason = string.Empty;
+
+            if (IsDowned)
+            {
+                reason = "player is downed";
+                return false;
+            }
+
+            if (IsHidden)
+            {
+                reason = "player is hidden";
+                return false;
+            }
+
+            var requestedRootToCom = new Vector2(requestedRoot.x - submittedCenterOfMass.x, requestedRoot.z - submittedCenterOfMass.z).magnitude;
+            if (requestedRootToCom > NetworkRecoveryMaxRootComHorizontalDistance)
+            {
+                reason = $"root/com horizontal delta {requestedRootToCom:0.00} exceeds {NetworkRecoveryMaxRootComHorizontalDistance:0.00}";
+                return false;
+            }
+
+            if (Vector3.Distance(transform.position, requestedRoot) > NetworkRecoveryMaxHostRootDistance)
+            {
+                reason = $"root too far from host-known root distance={Vector3.Distance(transform.position, requestedRoot):0.00}";
+                return false;
+            }
+
+            if (!TryResolveRecoveryRootPosition(submittedCenterOfMass, out var hostResolvedRoot))
+            {
+                reason = "no valid ground under submitted center of mass";
+                return false;
+            }
+
+            if (Vector3.Distance(hostResolvedRoot, requestedRoot) > NetworkRecoveryMaxRootGroundDelta)
+            {
+                reason = $"requested root differs from host ground resolve by {Vector3.Distance(hostResolvedRoot, requestedRoot):0.00}";
+                return false;
+            }
+
+            var previousRotation = transform.rotation;
+            transform.rotation = Quaternion.Euler(0f, requestedYaw, 0f);
+            var capsuleClear = IsStandingCapsuleClear(requestedRoot);
+            transform.rotation = previousRotation;
+            if (!capsuleClear)
+            {
+                reason = "standing capsule blocked";
+                return false;
+            }
+
+            approvedRoot = requestedRoot;
+            approvedYaw = requestedYaw;
+            return true;
         }
 
         private void RequeueBlockedRecovery()
@@ -1902,6 +2090,7 @@ namespace GroceryQuotaHorror.Player
             rigidbody.mass = projectile.mass;
             rigidbody.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             rigidbody.interpolation = RigidbodyInterpolation.Interpolate;
+            ball.AddComponent<GroceryQuotaHorror.Physics.PhysicsImpactAudio>();
             var projectileCollider = ball.GetComponent<Collider>();
 
             ignoredProjectileColliders.Clear();

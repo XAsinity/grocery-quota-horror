@@ -10,6 +10,10 @@ namespace GroceryQuotaHorror.Data
         [Tooltip("World-level physics values applied when this balance profile becomes active.")]
         public GlobalPhysicsTuning globalPhysics = new();
 
+        [Header("Physics Impact Audio")]
+        [Tooltip("Procedural thud/clack audio for rigidbody collisions.")]
+        public PhysicsImpactAudioTuning impactAudio = new();
+
         [Header("Player Movement")]
         [Tooltip("Core player movement, jumping, gravity, and mouse look values.")]
         public PlayerMovementTuning playerMovement = new();
@@ -64,6 +68,37 @@ namespace GroceryQuotaHorror.Data
     {
         [Tooltip("Unity Physics.gravity applied at runtime. More negative Y makes all physics fall harder.")]
         public Vector3 worldGravity = new(0f, -9.81f, 0f);
+    }
+
+    [Serializable]
+    public sealed class PhysicsImpactAudioTuning
+    {
+        [Tooltip("If disabled, procedural collision thuds are muted globally.")]
+        public bool enabled = true;
+        [Tooltip("Minimum collision relative velocity needed to play an impact sound.")]
+        public float minVelocity = 1.8f;
+        [Tooltip("Collision relative velocity treated as a maximum-strength impact.")]
+        public float hardVelocity = 12f;
+        [Tooltip("Minimum velocity into the contact normal needed to count as a real impact instead of rolling/sliding.")]
+        public float minNormalVelocity = 1.2f;
+        [Tooltip("Ignore contacts where too much of the motion is tangent to the surface, which filters rolling and scraping.")]
+        public float minNormalVelocityRatio = 0.45f;
+        [Tooltip("Maximum volume for hard impacts.")]
+        public float maxVolume = 0.48f;
+        [Tooltip("Minimum volume multiplier once an impact passes the velocity threshold.")]
+        public float minVolume = 0.08f;
+        [Tooltip("Seconds before the same object can play another impact sound.")]
+        public float perObjectCooldown = 0.16f;
+        [Tooltip("Seconds before a shared contact point can play another impact sound.")]
+        public float sharedPointCooldown = 0.035f;
+        [Tooltip("Maximum distance from the audio listener where impact sounds can be heard.")]
+        public float maxDistance = 32f;
+        [Tooltip("Extra multiplier for heavy objects. 0 disables mass scaling.")]
+        public float massVolumeScale = 0.18f;
+        [Tooltip("Random pitch variation applied to each impact sound.")]
+        public float pitchRandomness = 0.18f;
+        [Tooltip("Maximum number of procedural impact voices allowed across the scene at once.")]
+        public int maxSimultaneousVoices = 14;
     }
 
     [Serializable]
@@ -333,7 +368,7 @@ namespace GroceryQuotaHorror.Data
         [Tooltip("Maximum fastest single ragdoll body speed allowed before recovery can start.")]
         public float impactRecoveryMaxBodySpeed = 1.2f;
         [Tooltip("Maximum average ragdoll angular speed allowed before recovery can start.")]
-        public float impactRecoveryMaxAngularSpeed = 1.2f;
+        public float impactRecoveryMaxAngularSpeed = 1.8f;
         [Tooltip("Maximum center-of-mass drift speed allowed before recovery can start.")]
         public float impactRecoveryMaxComDriftSpeed = 0.35f;
         [Tooltip("Maximum distance below the ragdoll center of mass that still counts as stable ground support.")]
@@ -356,6 +391,12 @@ namespace GroceryQuotaHorror.Data
         public float impactBlackoutMinSeconds = 0.75f;
         [Tooltip("Longest full blackout duration after a maximum severity knockout impact.")]
         public float impactBlackoutMaxSeconds = 2.25f;
+        [Tooltip("Soft ringing volume played during a full knockout. 0 disables the sound.")]
+        public float impactKnockoutRingVolume = 0.09f;
+        [Tooltip("Base ringing pitch in hertz for full knockout tinnitus.")]
+        public float impactKnockoutRingFrequency = 2450f;
+        [Tooltip("Extra seconds the ringing can last after the blackout window starts.")]
+        public float impactKnockoutRingMaxSeconds = 3.5f;
         [Tooltip("Seconds used to fade impact darkness away after recovery completes.")]
         public float impactOverlayFadeOutSeconds = 1.25f;
     }

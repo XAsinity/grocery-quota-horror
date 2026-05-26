@@ -52,6 +52,7 @@ namespace GroceryQuotaHorror.Physics
             body.interpolation = RigidbodyInterpolation.Interpolate;
             body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             body.linearVelocity = transform.forward * hazards.ballSpeed;
+            ball.AddComponent<PhysicsImpactAudio>();
 
             Destroy(ball, hazards.ballLifetime);
         }

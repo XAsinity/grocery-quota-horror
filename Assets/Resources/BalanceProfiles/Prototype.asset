@@ -14,6 +14,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GroceryQuotaHorror.Data.GameBalanceProfile
   globalPhysics:
     worldGravity: {x: 0, y: -9.81, z: 0}
+  impactAudio:
+    enabled: 1
+    minVelocity: 1.8
+    hardVelocity: 12
+    minNormalVelocity: 1.2
+    minNormalVelocityRatio: 0.45
+    maxVolume: 0.48
+    minVolume: 0.08
+    perObjectCooldown: 0.16
+    sharedPointCooldown: 0.035
+    maxDistance: 32
+    massVolumeScale: 0.18
+    pitchRandomness: 0.18
+    maxSimultaneousVoices: 14
   playerMovement:
     moveSpeed: 4
     sprintMultiplier: 1.6
@@ -136,7 +150,7 @@ MonoBehaviour:
     impactRecoveryStableHoldSeconds: 0.45
     impactRecoveryMaxAverageSpeed: 0.45
     impactRecoveryMaxBodySpeed: 1.2
-    impactRecoveryMaxAngularSpeed: 1.2
+    impactRecoveryMaxAngularSpeed: 1.8
     impactRecoveryMaxComDriftSpeed: 0.35
     impactRecoveryGroundProbeDistance: 2.5
     impactKnockoutSeverityThreshold: 0.82
@@ -148,6 +162,9 @@ MonoBehaviour:
     impactBlackoutAlpha: 1
     impactBlackoutMinSeconds: 0.75
     impactBlackoutMaxSeconds: 2.25
+    impactKnockoutRingVolume: 0.09
+    impactKnockoutRingFrequency: 2450
+    impactKnockoutRingMaxSeconds: 3.5
     impactOverlayFadeOutSeconds: 1.25
   hazards:
     overrideImpactVelocityThreshold: 7.5

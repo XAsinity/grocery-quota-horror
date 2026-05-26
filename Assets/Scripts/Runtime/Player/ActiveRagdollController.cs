@@ -748,6 +748,12 @@ namespace GroceryQuotaHorror.Player
                     body.isKinematic = true;
                     body.useGravity = false;
                     body.detectCollisions = false;
+                    var impactAudio = body.GetComponent<GroceryQuotaHorror.Physics.PhysicsImpactAudio>();
+                    if (impactAudio != null)
+                    {
+                        Destroy(impactAudio);
+                    }
+
                     Destroy(body);
                 }
             }

@@ -40,6 +40,10 @@ namespace GroceryQuotaHorror.Physics
             body.interpolation = RigidbodyInterpolation.Interpolate;
             body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             body.maxAngularVelocity = hazards.hammerMaxAngularVelocity;
+            if (GetComponent<PhysicsImpactAudio>() == null)
+            {
+                gameObject.AddComponent<PhysicsImpactAudio>();
+            }
 
             var box = GetComponent<BoxCollider>();
             if (box.size == Vector3.zero)

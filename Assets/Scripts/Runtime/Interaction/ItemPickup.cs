@@ -2,6 +2,7 @@ using GroceryQuotaHorror.Bootstrap;
 using GroceryQuotaHorror.Core;
 using GroceryQuotaHorror.Data;
 using GroceryQuotaHorror.Player;
+using GroceryQuotaHorror.Physics;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -34,6 +35,11 @@ namespace GroceryQuotaHorror.Interaction
         private void Awake()
         {
             body = GetComponent<Rigidbody>();
+            if (GetComponent<PhysicsImpactAudio>() == null)
+            {
+                gameObject.AddComponent<PhysicsImpactAudio>();
+            }
+
             if (meshRenderer == null)
             {
                 meshRenderer = GetComponentInChildren<MeshRenderer>();
