@@ -16,7 +16,7 @@ namespace GroceryQuotaHorror.Editor
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
         }
 
-        [MenuItem("Grocery Quota Horror/Play Prototype Local")]
+        [MenuItem("Grocery Quota Horror/Play Prototype Local _F6")]
         private static void PlayPrototypeLocal()
         {
             SessionState.SetBool(PendingLaunchKey, true);
@@ -37,7 +37,7 @@ namespace GroceryQuotaHorror.Editor
             EditorApplication.EnterPlaymode();
         }
 
-        [MenuItem("Grocery Quota Horror/Play Prototype Local", true)]
+        [MenuItem("Grocery Quota Horror/Play Prototype Local _F6", true)]
         private static bool ValidatePlayPrototypeLocal()
         {
             return !EditorApplication.isCompiling &&
