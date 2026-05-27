@@ -154,7 +154,7 @@ namespace GroceryQuotaHorror.Monsters
             var activeDefinitionIndex = GetActiveDefinitionIndex();
             if (meshRenderer != null && contentDatabase != null && activeDefinitionIndex >= 0)
             {
-                meshRenderer.sharedMaterial.color = contentDatabase.monsterPool[activeDefinitionIndex].tint;
+                meshRenderer.material.color = contentDatabase.monsterPool[activeDefinitionIndex].tint;
             }
         }
 

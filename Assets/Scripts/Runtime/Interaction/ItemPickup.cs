@@ -139,7 +139,7 @@ namespace GroceryQuotaHorror.Interaction
                 return;
             }
 
-            meshRenderer.sharedMaterial.color = contentDatabase.itemPool[definitionIndex.Value].tint;
+            meshRenderer.material.color = contentDatabase.itemPool[definitionIndex.Value].tint;
         }
     }
 }

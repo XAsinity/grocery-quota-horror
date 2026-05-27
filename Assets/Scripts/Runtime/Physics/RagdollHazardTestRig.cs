@@ -31,6 +31,7 @@ namespace GroceryQuotaHorror.Physics
             if (swingingHammerPrefab == null)
             {
                 block.transform.localScale = hazards.fallbackHammerScale;
+                PrototypeVisualMaterials.ApplyDefaultLit(block.GetComponent<Renderer>());
             }
 
             if (block.GetComponent<SwingingImpactBlock>() == null)

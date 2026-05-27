@@ -46,6 +46,7 @@ namespace GroceryQuotaHorror.Physics
             ball.name = "Impact Test Ball";
             ball.transform.position = transform.position;
             ball.transform.localScale = Vector3.one * hazards.ballScale;
+            PrototypeVisualMaterials.ApplyDefaultLit(ball.GetComponent<Renderer>());
 
             var body = ball.AddComponent<Rigidbody>();
             body.mass = hazards.ballMass;

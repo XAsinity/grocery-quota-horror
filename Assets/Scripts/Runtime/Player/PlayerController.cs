@@ -2085,6 +2085,7 @@ namespace GroceryQuotaHorror.Player
             ball.name = "PhysicsBall";
             ball.transform.position = playerCamera.transform.position + playerCamera.transform.forward * projectile.spawnDistance;
             ball.transform.localScale = Vector3.one * projectile.scale;
+            PrototypeVisualMaterials.ApplyDefaultLit(ball.GetComponent<Renderer>());
 
             var rigidbody = ball.AddComponent<Rigidbody>();
             rigidbody.mass = projectile.mass;
