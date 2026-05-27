@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: front_entrance
   m_EditorClassIdentifier: Assembly-CSharp::GroceryQuotaHorror.Data.StoreChunkDefinition
   chunkId: front_entrance
-  roomType: 1
-  prefab: {fileID: 0}
-  spawnTags: 2
-  allowMonsters: 1
-  gizmoColor: {r: 0, g: 1, b: 0, a: 1}
+  roomType: 0
+  prefab: {fileID: 7252710487228444322, guid: 253ac51dc2e78f44e9952b68d9c68348, type: 3}
+  spawnTags: 1
+  allowMonsters: 0
+  gizmoColor: {r: 0.75, g: 0.75, b: 0.8, a: 1}

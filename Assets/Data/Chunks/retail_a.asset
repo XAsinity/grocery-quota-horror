@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b9f64ea660808204fac952030788b226, type: 3}
   m_Name: retail_a
   m_EditorClassIdentifier: Assembly-CSharp::GroceryQuotaHorror.Data.StoreChunkDefinition
-  chunkId: front_entrance
+  chunkId: retail_a
   roomType: 1
-  prefab: {fileID: 0}
+  prefab: {fileID: 6404731190822401914, guid: a7ff5be0defdffe4e9920ab2fa1d8086, type: 3}
   spawnTags: 2
   allowMonsters: 1
-  gizmoColor: {r: 0, g: 1, b: 0, a: 1}
+  gizmoColor: {r: 0.8, g: 0.7, b: 0.25, a: 1}

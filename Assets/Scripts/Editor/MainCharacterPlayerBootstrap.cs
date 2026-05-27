@@ -16,7 +16,7 @@ namespace GroceryQuotaHorror.Editor
 
         static MainCharacterPlayerBootstrap()
         {
-            EditorApplication.delayCall += EnsurePlayerPrefab;
+            EditorApplication.delayCall += EnsurePlayerNetworkAuthority;
         }
 
         [MenuItem("Tools/Grocery Quota Horror/Rebuild Player From MainCharacter")]
@@ -44,12 +44,12 @@ namespace GroceryQuotaHorror.Editor
             var controller = EnsureComponent<CharacterController>(root);
             var networkObject = EnsureComponent<NetworkObject>(root);
             var networkTransform = EnsureComponent<Unity.Netcode.Components.NetworkTransform>(root);
+            networkTransform.AuthorityMode = Unity.Netcode.Components.NetworkTransform.AuthorityModes.Owner;
             var player = EnsureComponent<PlayerController>(root);
             var looseBody = EnsureComponent<PlayerLooseBodyController>(root);
             var activeRagdoll = EnsureComponent<ActiveRagdollController>(root);
             var rootBody = EnsureComponent<Rigidbody>(root);
             _ = networkObject;
-            _ = networkTransform;
 
             controller = root.GetComponent<CharacterController>();
             player = root.GetComponent<PlayerController>();
@@ -94,6 +94,33 @@ namespace GroceryQuotaHorror.Editor
             PrefabUtility.UnloadPrefabContents(sourceRoot);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
+        }
+
+        private static void EnsurePlayerNetworkAuthority()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                return;
+            }
+
+            var playerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(PlayerPrefabPath);
+            var networkTransform = playerPrefab != null
+                ? playerPrefab.GetComponent<Unity.Netcode.Components.NetworkTransform>()
+                : null;
+            if (networkTransform == null)
+            {
+                EnsurePlayerPrefab();
+                return;
+            }
+
+            if (networkTransform.AuthorityMode == Unity.Netcode.Components.NetworkTransform.AuthorityModes.Owner)
+            {
+                return;
+            }
+
+            networkTransform.AuthorityMode = Unity.Netcode.Components.NetworkTransform.AuthorityModes.Owner;
+            EditorUtility.SetDirty(networkTransform);
+            AssetDatabase.SaveAssets();
         }
 
         private static void ConfigureCamera(GameObject sourceRoot, GameObject targetRoot)

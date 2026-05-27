@@ -71,6 +71,7 @@ namespace GroceryQuotaHorror.Editor
 
         private static void PopulateContentDatabase(GameContentDatabase content)
         {
+            RepairChunkDefinitions();
             content.itemPool = LoadAssets<ItemDefinition>($"{DataRoot}/Items");
             content.monsterPool = LoadAssets<MonsterDefinition>($"{DataRoot}/Monsters");
             content.chunkPool = LoadAssets<StoreChunkDefinition>($"{DataRoot}/Chunks");
@@ -78,6 +79,53 @@ namespace GroceryQuotaHorror.Editor
             content.monsterPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Gameplay/Monster.prefab");
             content.nightGameManagerPrefab = AssetDatabase.LoadAssetAtPath<GroceryQuotaHorror.Core.NightGameManager>("Assets/Prefabs/Managers/NightGameManager.prefab");
             EditorUtility.SetDirty(content);
+        }
+
+        private static void RepairChunkDefinitions()
+        {
+            var definitions = new (string id, RoomType type, SpawnZone zone, bool allowMonsters, Color color)[]
+            {
+                ("front_entrance", RoomType.FrontEntrance, SpawnZone.Front, false, new Color(0.75f, 0.75f, 0.8f)),
+                ("produce", RoomType.Produce, SpawnZone.Retail, true, new Color(0.2f, 0.65f, 0.2f)),
+                ("retail_a", RoomType.RetailAisle, SpawnZone.Retail, true, new Color(0.8f, 0.7f, 0.25f)),
+                ("retail_b", RoomType.RetailAisle, SpawnZone.Retail, true, new Color(0.7f, 0.45f, 0.15f)),
+                ("freezer", RoomType.Freezer, SpawnZone.Cold, true, new Color(0.55f, 0.8f, 1f)),
+                ("bakery", RoomType.Bakery, SpawnZone.Retail, true, new Color(0.8f, 0.55f, 0.3f)),
+                ("stockroom", RoomType.Stockroom, SpawnZone.Backroom, true, new Color(0.45f, 0.45f, 0.45f)),
+                ("utility", RoomType.Utility, SpawnZone.Utility, true, new Color(0.55f, 0.55f, 0.7f)),
+                ("loading_dock", RoomType.LoadingDock, SpawnZone.Backroom, true, new Color(0.3f, 0.3f, 0.3f)),
+                ("checkout", RoomType.Checkout, SpawnZone.Checkout, false, new Color(0.9f, 0.2f, 0.2f))
+            };
+
+            for (var i = 0; i < definitions.Length; i++)
+            {
+                var definition = definitions[i];
+                var chunk = AssetDatabase.LoadAssetAtPath<StoreChunkDefinition>($"{DataRoot}/Chunks/{definition.id}.asset");
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/Prefabs/Chunks/{definition.id}.prefab");
+                if (chunk == null || prefab == null)
+                {
+                    Debug.LogWarning($"Cannot repair chunk definition '{definition.id}' because its data asset or prefab is missing.");
+                    continue;
+                }
+
+                if (chunk.chunkId == definition.id &&
+                    chunk.roomType == definition.type &&
+                    chunk.prefab == prefab &&
+                    chunk.spawnTags == definition.zone &&
+                    chunk.allowMonsters == definition.allowMonsters &&
+                    chunk.gizmoColor == definition.color)
+                {
+                    continue;
+                }
+
+                chunk.chunkId = definition.id;
+                chunk.roomType = definition.type;
+                chunk.prefab = prefab;
+                chunk.spawnTags = definition.zone;
+                chunk.allowMonsters = definition.allowMonsters;
+                chunk.gizmoColor = definition.color;
+                EditorUtility.SetDirty(chunk);
+            }
         }
 
         private static void EnsureProfile(string path, System.Action<GameBalanceProfile> configure)

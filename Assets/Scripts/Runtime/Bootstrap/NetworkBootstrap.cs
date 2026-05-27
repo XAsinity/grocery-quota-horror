@@ -15,6 +15,11 @@ namespace GroceryQuotaHorror.Bootstrap
         private const string SupermarketSceneName = "SupermarketNight";
         private const string PrototypeSceneName = "TestPrototype";
         private const float OfflinePlayerSpawnHeight = 1.5f;
+#if UNITY_EDITOR
+        private const string EditorPendingLocalLaunchKey = "GroceryQuotaHorror.LocalLaunchDestination";
+        private const int EditorPrototypeDestination = 1;
+        private const int EditorNightDestination = 2;
+#endif
 
         [SerializeField] private NetworkManager networkManager;
         [SerializeField] private GameBalanceProfile balanceProfile;
@@ -48,6 +53,12 @@ namespace GroceryQuotaHorror.Bootstrap
 
             SceneManager.sceneLoaded += OnUnitySceneLoaded;
             Debug.Log("[OfflineSpawn] NetworkBootstrap started and sceneLoaded listener attached.");
+#if UNITY_EDITOR
+            if (SceneManager.GetActiveScene().name == BootstrapSceneName)
+            {
+                StartCoroutine(RouteEditorPlaySessionNextFrame());
+            }
+#endif
         }
 
         private void OnDestroy()
@@ -60,6 +71,7 @@ namespace GroceryQuotaHorror.Bootstrap
             SceneManager.sceneLoaded -= OnUnitySceneLoaded;
         }
 
+#if !UNITY_EDITOR
         private void OnGUI()
         {
             if (SceneManager.GetActiveScene().name != BootstrapSceneName)
@@ -137,6 +149,7 @@ namespace GroceryQuotaHorror.Bootstrap
             GUILayout.Label(lastStatus);
             GUILayout.EndArea();
         }
+#endif
 
         private void Update()
         {
@@ -268,6 +281,34 @@ namespace GroceryQuotaHorror.Bootstrap
         {
             LoadLocalScene(PrototypeSceneName);
         }
+
+        public void OpenNightLocal()
+        {
+            LoadLocalScene(SupermarketSceneName);
+        }
+
+#if UNITY_EDITOR
+        private System.Collections.IEnumerator RouteEditorPlaySessionNextFrame()
+        {
+            yield return null;
+            RouteEditorPlaySession();
+        }
+
+        private void RouteEditorPlaySession()
+        {
+            var requestedDestination = UnityEditor.SessionState.GetInt(EditorPendingLocalLaunchKey, EditorNightDestination);
+            UnityEditor.SessionState.EraseInt(EditorPendingLocalLaunchKey);
+
+            if (requestedDestination == EditorPrototypeDestination)
+            {
+                OpenPrototypeLocal();
+            }
+            else
+            {
+                OpenNightLocal();
+            }
+        }
+#endif
 
         private void SubscribeToNetworkSceneEvents()
         {

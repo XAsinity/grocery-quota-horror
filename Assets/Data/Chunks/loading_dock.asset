@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b9f64ea660808204fac952030788b226, type: 3}
   m_Name: loading_dock
   m_EditorClassIdentifier: Assembly-CSharp::GroceryQuotaHorror.Data.StoreChunkDefinition
-  chunkId: front_entrance
-  roomType: 1
-  prefab: {fileID: 0}
-  spawnTags: 2
+  chunkId: loading_dock
+  roomType: 8
+  prefab: {fileID: 4799246421179336452, guid: 2ee5b429cdbe7374c86b2c8052a1a632, type: 3}
+  spawnTags: 8
   allowMonsters: 1
-  gizmoColor: {r: 0, g: 1, b: 0, a: 1}
+  gizmoColor: {r: 0.3, g: 0.3, b: 0.3, a: 1}
