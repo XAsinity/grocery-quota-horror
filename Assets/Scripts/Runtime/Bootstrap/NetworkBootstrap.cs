@@ -79,7 +79,7 @@ namespace GroceryQuotaHorror.Bootstrap
 
             if (GUILayout.Button("Open Prototype Local"))
             {
-                LoadLocalScene(PrototypeSceneName);
+                OpenPrototypeLocal();
             }
 
             GUILayout.Space(12f);
@@ -262,6 +262,11 @@ namespace GroceryQuotaHorror.Bootstrap
             lastStatus = $"Loading {sceneName} locally...";
             Debug.Log($"[OfflineSpawn] Requesting local scene load for '{sceneName}'.");
             SceneManager.LoadScene(sceneName, LoadSceneMode.Single);
+        }
+
+        public void OpenPrototypeLocal()
+        {
+            LoadLocalScene(PrototypeSceneName);
         }
 
         private void SubscribeToNetworkSceneEvents()
